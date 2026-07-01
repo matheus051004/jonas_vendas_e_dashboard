@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SaleStage {
+  NOVO_LEAD
+  INTERESSADO
+  FECHOU_VENDA
+  DESISTIU
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+enum MessageKind {
+  text
+  audio
+}
+
+model Client {
+  id                 String    @id @default(cuid())
+  phone              String    @unique
+  name               String?
+  cep                String?
+  originId           String?
+  stage              SaleStage @default(NOVO_LEAD)
+  currentProvider    String?
+  currentPrice       Decimal?  @db.Decimal(10, 2)
+  hadBadExperience   Boolean?
+  badExperienceNote  String?
+  followUpCount      Int       @default(0)
+  lastInboundAt      DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  origin   Origin?   @relation(fields: [originId], references: [id])
+  contract Contract?
+  messages Message[]
+
+  @@index([stage])
+  @@index([originId])
+}
+
+model Plan {
+  name          String
+  id            String   @id @default(cuid())
+  price         Decimal  @db.Decimal(10, 2)
+  loyaltyMonths Int
+  description   String
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  ceps      CepPlan[]
+  contracts Contract[]
+}
+
+model Cep {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  city      String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  plans CepPlan[]
+}
+
+model CepPlan {
+  cepId  String
+  planId String
+
+  cep  Cep  @relation(fields: [cepId], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@id([cepId, planId])
+}
+
+model Origin {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  clients Client[]
+}
+
+model Contract {
+  id              String   @id @default(cuid())
+  clientId        String   @unique
+  planId          String?
+  fullName        String
+  cpf             String
+  phonePrimary    String
+  phoneSecondary  String
+  email           String
+  gender          String
+  observation     String?
+  createdAt       DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan   Plan?  @relation(fields: [planId], references: [id])
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  clientId  String
+  role      MessageRole
+  content   String
+  kind      MessageKind @default(text)
+  createdAt DateTime    @default(now())
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
+}
+
+// Linha única (id fixo "default") com a configuração da IA, editável no painel.
+model Settings {
+  id                     String  @id @default("default")
+  aiModel                String  @default("gpt-5.4")
+  maxTokens              Int     @default(1024)
+  temperature            Float   @default(0.7)
+  openAiApiKey           String  @default("")
+  generalPrompt          String  @default("")
+  keyPoints              String  @default("")
+  toolsDescription       String  @default("")
+  outboundWebhookUrl     String  @default("")
+  contractWebhookUrl     String  @default("")
+  outboundWebhookSecret  String?
+}

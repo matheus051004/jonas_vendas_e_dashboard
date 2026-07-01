@@ -1,0 +1,16 @@
+{
+  "name": "jonas-vendas-e-painel",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:worker": "pnpm --filter worker dev",
+    "build": "pnpm --filter db build && pnpm --filter shared build && pnpm --filter web build && pnpm --filter worker build",
+    "db:generate": "pnpm --filter db exec prisma generate",
+    "db:migrate": "pnpm --filter db exec prisma migrate dev",
+    "db:seed": "pnpm --filter db exec prisma db seed"
+  },
+  "packageManager": "pnpm@11.9.0"
+}
