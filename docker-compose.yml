@@ -1,6 +1,6 @@
 services:
   web_vendas:
-    container_name: jonas-web
+    container_name: web_vendas
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -25,7 +25,7 @@ services:
       start_period: 30s
 
   worker_vendas:
-    container_name: jonas-worker
+    container_name: worker_vendas
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
