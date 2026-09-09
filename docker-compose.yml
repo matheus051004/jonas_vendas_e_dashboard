@@ -35,6 +35,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      web:
+      web_vendas:
         condition: service_healthy
 
