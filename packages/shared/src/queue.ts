@@ -28,7 +28,7 @@ const FOLLOW_UP_DELAYS_MS = {
 } as const;
 
 function followUpJobId(phone: string) {
-  return `followup:${phone}`;
+  return `followup-${phone}`;
 }
 
 export async function scheduleFollowUp(phone: string, attempt: 1 | 2 | 3) {

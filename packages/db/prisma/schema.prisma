@@ -10,6 +10,8 @@ datasource db {
 enum SaleStage {
   NOVO_LEAD
   INTERESSADO
+  PAROU_DE_RESPONDER
+  ACHOU_CARO
   FECHOU_VENDA
   DESISTIU
 }
@@ -29,7 +31,7 @@ model Client {
   id                 String    @id @default(cuid())
   phone              String    @unique
   name               String?
-  cep                String?
+  areaId             String?
   originId           String?
   stage              SaleStage @default(NOVO_LEAD)
   currentProvider    String?
@@ -38,100 +40,211 @@ model Client {
   badExperienceNote  String?
   followUpCount      Int       @default(0)
   lastInboundAt      DateTime?
+  // Metadados opacos enviados pelo chat externo no webhook de entrada (ecoados na saída).
+  metadata           Json?
+  // Dados brutos de retorno do Hubsoft após fechamento de contrato
+  hubsoftData        Json?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
+  area     Area?     @relation(fields: [areaId], references: [id])
   origin   Origin?   @relation(fields: [originId], references: [id])
   contract Contract?
   messages Message[]
 
   @@index([stage])
   @@index([originId])
+  @@index([areaId])
 }
 
 model Plan {
-  name          String
-  id            String   @id @default(cuid())
-  price         Decimal  @db.Decimal(10, 2)
-  loyaltyMonths Int
-  description   String
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now())
+  name             String
+  id               String   @id @default(cuid())
+  price            Decimal  @db.Decimal(10, 2)
+  priceWithLoyalty Decimal? @db.Decimal(10, 2)
+  loyaltyMonths    Int
+  description      String
+  hubsoftServiceId Int?
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
 
-  ceps      CepPlan[]
-  contracts Contract[]
+  areas      AreaPlan[]
+  contracts  Contract[]
+  packages   PlanPackage[]
+  promotions PlanPromotion[]
 }
 
-model Cep {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  city      String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+model Package {
+  id               String            @id @default(cuid())
+  name             String
+  price            Decimal           @db.Decimal(10, 2)
+  description      String
+  hubsoftPackageId Int?
+  active           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
 
-  plans CepPlan[]
+  plans            PlanPackage[]
+  contracts        ContractPackage[]
 }
 
-model CepPlan {
-  cepId  String
+model PlanPackage {
+  planId    String
+  packageId String
+
+  plan    Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@id([planId, packageId])
+}
+
+model ContractPackage {
+  contractId String
+  packageId  String
+
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  package  Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@id([contractId, packageId])
+}
+
+model Promotion {
+  id                 String          @id @default(cuid())
+  name               String
+  description        String?
+  hubsoftPromotionId Int?
+  active             Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+
+  plans              PlanPromotion[]
+}
+
+model PlanPromotion {
+  planId      String
+  promotionId String
+
+  plan        Plan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  @@id([planId, promotionId])
+}
+
+// Área informal de cobertura (setor, distrito, bairro, etc. — sem padrão fixo).
+// observation guarda notas da área, ex: "Taxa de instalação: ISENTO".
+model Area {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  observation  String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  plans   AreaPlan[]
+  clients Client[]
+}
+
+model AreaPlan {
+  areaId String
   planId String
 
-  cep  Cep  @relation(fields: [cepId], references: [id], onDelete: Cascade)
+  area Area @relation(fields: [areaId], references: [id], onDelete: Cascade)
   plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
-  @@id([cepId, planId])
+  @@id([areaId, planId])
 }
 
 model Origin {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  name            String   @unique
+  hubsoftOriginId Int?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
 
   clients Client[]
 }
 
 model Contract {
-  id              String   @id @default(cuid())
-  clientId        String   @unique
-  planId          String?
-  fullName        String
-  cpf             String
-  phonePrimary    String
-  phoneSecondary  String
-  email           String
-  gender          String
-  observation     String?
-  createdAt       DateTime @default(now())
+  id                 String   @id @default(cuid())
+  clientId           String   @unique
+  planId             String?
+  personType         String   @default("pf")
+  fullName           String   @default("")
+  cpf                String?
+  companyName        String?
+  tradeName          String?
+  cnpj               String?
+  stateRegistration  String?
+  contactName        String?
+  phonePrimary       String
+  phoneSecondary     String?
+  email              String
+  gender             String?
+  observation        String?
+  rg                 String?
+  rgEmissor          String?
+  birthDate          String?
+  motherName         String?
+  fatherName         String?
+  maritalStatus      String?
+  profession         String?
+  nationality        String?  @default("brasileiro")
+  cep                String?
+  street             String?
+  number             String?
+  neighborhood       String?
+  complement         String?
+  reference          String?
+  hubsoftClientId    Int?
+  hubsoftProtocol    String?
+  hubsoftRawResponse Json?
+  createdAt          DateTime @default(now())
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  plan   Plan?  @relation(fields: [planId], references: [id])
+  client   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  plan     Plan?             @relation(fields: [planId], references: [id])
+  packages ContractPackage[]
 }
 
 model Message {
-  id        String      @id @default(cuid())
-  clientId  String
-  role      MessageRole
-  content   String
-  kind      MessageKind @default(text)
-  createdAt DateTime    @default(now())
+  id            String      @id @default(cuid())
+  clientId      String
+  role          MessageRole
+  content       String
+  kind          MessageKind @default(text)
+  // Áudio original (quando kind=audio). content guarda a transcrição.
+  audioData     Bytes?
+  audioMimeType String?
+  createdAt     DateTime    @default(now())
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId, createdAt])
 }
 
-// Linha única (id fixo "default") com a configuração da IA, editável no painel.
+// Linha única (id fixo "default") — branding + webhooks, editável no painel.
 model Settings {
   id                     String  @id @default("default")
-  aiModel                String  @default("gpt-5.4")
-  maxTokens              Int     @default(1024)
-  temperature            Float   @default(0.7)
-  openAiApiKey           String  @default("")
-  generalPrompt          String  @default("")
-  keyPoints              String  @default("")
-  toolsDescription       String  @default("")
-  outboundWebhookUrl     String  @default("")
-  contractWebhookUrl     String  @default("")
-  outboundWebhookSecret  String?
+  // Branding do painel (nome, logo e paleta).
+  brandName                String  @default("Painel de Vendas")
+  // Data URL (ex.: data:image/png;base64,...) — null = sem logo.
+  brandLogo                String?
+  colorPrimary             String  @default("#1565c0")
+  colorSecondary           String  @default("#9c27b0")
+  colorBackground          String  @default("#f5f5f5")
+  // Prompt / instruções de sistema para a IA externa.
+  aiPrompt               String  @default("")
+  // URL do sistema de IA externo (recebe message.inbound / followup.due).
+  agentWebhookUrl          String  @default("")
+  // URL do app de chat (respostas ao lead).
+  outboundWebhookUrl       String  @default("")
+  // Notificação de venda fechada (CRM/provedor).
+  contractWebhookUrl       String  @default("")
+  // HMAC-SHA256 (header x-webhook-signature) nos webhooks de saída, se preenchido.
+  outboundWebhookSecret    String?
+  // Padrões de integração com Hubsoft
+  hubsoftBaseUrl             String  @default("https://api.ligtop.hubsoft.com.br")
+  hubsoftVendedorId          Int     @default(636)
+  hubsoftVencimentoId        Int     @default(9)
+  hubsoftMotivoContratacaoId Int     @default(48)
+  hubsoftGruposClienteIds    Int[]   @default([4])
+  hubsoftGruposServicoIds    Int[]   @default([835])
+  hubsoftFormaCobrancaId     Int     @default(94)
+  hubsoftServicoStatusId     Int     @default(6)
 }

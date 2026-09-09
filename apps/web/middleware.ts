@@ -1,12 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_NAME, verifySessionToken } from "./lib/auth";
 
-// Webhook de entrada tem token próprio (x-webhook-token), fica fora da sessão de login.
-const PUBLIC_PATHS = ["/login", "/api/webhooks/inbound"];
+// Webhooks e API do agente usam x-webhook-token (não a sessão do painel).
+// /api/branding é público (nome/logo/cores na tela de login).
+const PUBLIC_PATHS = ["/login", "/api/webhooks", "/api/agent", "/api/branding"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.next();
+  }
 
   const token = req.cookies.get(COOKIE_NAME)?.value;
   const isValid = token ? await verifySessionToken(token) : false;

@@ -5,12 +5,14 @@
     "node": ">=20"
   },
   "scripts": {
+    "dev": "pnpm -r --parallel --if-present run dev",
     "dev:web": "pnpm --filter web dev",
     "dev:worker": "pnpm --filter worker dev",
     "build": "pnpm --filter db build && pnpm --filter shared build && pnpm --filter web build && pnpm --filter worker build",
-    "db:generate": "pnpm --filter db exec prisma generate",
-    "db:migrate": "pnpm --filter db exec prisma migrate dev",
-    "db:seed": "pnpm --filter db exec prisma db seed"
+    "db:generate": "bash scripts/db.sh generate",
+    "db:migrate": "bash scripts/db.sh migrate",
+    "db:push": "bash scripts/db.sh push",
+    "db:seed": "bash scripts/db.sh seed"
   },
   "packageManager": "pnpm@11.9.0"
 }

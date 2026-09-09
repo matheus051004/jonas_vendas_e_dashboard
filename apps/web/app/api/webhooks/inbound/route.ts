@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  // Responde rápido; todo o processamento pesado (transcrição, agente, follow-up) roda no worker.
+  // Responde rápido; persistência, notificação à IA e follow-up rodam no worker.
   await messagesQueue.add("incoming", parsed.data);
 
   return NextResponse.json({ ok: true });

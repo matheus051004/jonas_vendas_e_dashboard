@@ -2,17 +2,35 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getSettings, updateSettings } from "@jonas/shared";
 
+const emptyOrUrl = z.union([z.string().url(), z.literal("")]);
+
+const hexColor = z.string().regex(/^#([0-9A-Fa-f]{6})$/);
+
+// Logo data URL: limite ~750 KB de base64 (~500 KB de arquivo) para não estourar o body/JSON.
+const brandLogo = z
+  .string()
+  .max(1_000_000, "Logo muito grande — use imagem menor (até ~500 KB)")
+  .nullable();
+
 const SettingsUpdateSchema = z.object({
-  aiModel: z.string().min(1).optional(),
-  maxTokens: z.number().int().positive().optional(),
-  temperature: z.number().min(0).max(2).optional(),
-  openAiApiKey: z.string().optional(),
-  generalPrompt: z.string().optional(),
-  keyPoints: z.string().optional(),
-  toolsDescription: z.string().optional(),
-  outboundWebhookUrl: z.string().optional(),
-  contractWebhookUrl: z.string().optional(),
-  outboundWebhookSecret: z.string().optional(),
+  brandName: z.string().min(1).max(80).optional(),
+  brandLogo: brandLogo.optional(),
+  colorPrimary: hexColor.optional(),
+  colorSecondary: hexColor.optional(),
+  colorBackground: hexColor.optional(),
+  aiPrompt: z.string().optional(),
+  agentWebhookUrl: emptyOrUrl.optional(),
+  outboundWebhookUrl: emptyOrUrl.optional(),
+  contractWebhookUrl: emptyOrUrl.optional(),
+  outboundWebhookSecret: z.string().nullish(),
+  hubsoftBaseUrl: z.string().url().optional(),
+  hubsoftVendedorId: z.number().int().positive().optional(),
+  hubsoftVencimentoId: z.number().int().positive().optional(),
+  hubsoftMotivoContratacaoId: z.number().int().positive().optional(),
+  hubsoftGruposClienteIds: z.array(z.number().int()).optional(),
+  hubsoftGruposServicoIds: z.array(z.number().int()).optional(),
+  hubsoftFormaCobrancaId: z.number().int().positive().optional(),
+  hubsoftServicoStatusId: z.number().int().positive().optional(),
 });
 
 export async function GET() {

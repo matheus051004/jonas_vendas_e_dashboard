@@ -4,11 +4,8 @@ import * as React from "react";
 import createCache from "@emotion/cache";
 import { useServerInsertedHTML } from "next/navigation";
 import { CacheProvider } from "@emotion/react";
-import { ThemeProvider, CssBaseline, createTheme } from "@mui/material";
-
-const theme = createTheme({
-  palette: { primary: { main: "#1565c0" } },
-});
+import { CssBaseline } from "@mui/material";
+import { BrandingProvider } from "@/lib/branding";
 
 // Padrão oficial MUI+Next App Router pra injetar os estilos do emotion no SSR.
 export default function ThemeRegistry({ children }: { children: React.ReactNode }) {
@@ -48,10 +45,10 @@ export default function ThemeRegistry({ children }: { children: React.ReactNode 
 
   return (
     <CacheProvider value={cache}>
-      <ThemeProvider theme={theme}>
+      <BrandingProvider>
         <CssBaseline />
         {children}
-      </ThemeProvider>
+      </BrandingProvider>
     </CacheProvider>
   );
 }

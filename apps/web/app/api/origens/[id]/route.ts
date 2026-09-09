@@ -4,6 +4,7 @@ import { prisma } from "@jonas/db";
 
 const OriginUpdateSchema = z.object({
   name: z.string().min(1).optional(),
+  hubsoftOriginId: z.number().int().positive().nullable().optional(),
   active: z.boolean().optional(),
 });
 

@@ -1,43 +1,41 @@
-# Painel + IA de Vendas
+# Painel de Vendas + ponte de IA
 
-Painel administrativo e agente de IA (texto e áudio) para vender planos de internet via WhatsApp/chat, conectado por webhook.
+Painel administrativo e ponte de webhooks para vender planos de internet via WhatsApp/chat. A **IA roda em um sistema externo**; este projeto recebe mensagens, notifica a IA, expõe tools REST e encaminha respostas ao chat.
 
 ## Stack
 
 - Node.js / TypeScript / Next.js (App Router) + Material UI
 - PostgreSQL (Prisma) + Redis (BullMQ)
-- OpenAI via Langchain (modelo, tokens e prompt configuráveis pelo painel)
 - Monorepo pnpm workspaces
 
 ## Estrutura
 
 ```
 apps/
-  web/      # painel (Next.js) + API routes (CRUDs, webhook de entrada)
-  worker/   # processa mensagens da IA e follow-ups (BullMQ)
+  web/      # painel (Next.js) + API routes + webhooks + /api/agent/*
+  worker/   # persiste mensagens, notifica IA, follow-ups (BullMQ)
 packages/
   db/       # schema Prisma + client
-  shared/   # tipos, filas, settings, agente Langchain (tools, prompt, memória, transcrição)
+  shared/   # tipos, filas, settings, serviços de tools/webhooks
 ```
 
-`apps/web` recebe o webhook de entrada, valida e enfileira. `apps/worker` consome a fila, roda o agente e responde via webhook de saída. Os dois compartilham lógica via `packages/shared`.
+`apps/web` recebe o webhook de entrada, valida e enfileira. `apps/worker` salva a mensagem e faz POST em `agentWebhookUrl`. A IA externa usa `/api/agent/*` e `POST /api/webhooks/agent/reply`. Os dois apps compartilham lógica via `packages/shared`.
 
 ## Setup
 
-Pré-requisitos: Node 20+, pnpm (via `corepack enable`), Docker.
+Pré-requisitos: Node 20+, pnpm (via `corepack enable`), Postgres e Redis.
 
 ```bash
 cp .env.example .env
-# edite ADMIN_USER, ADMIN_PASSWORD, NEXTAUTH_SECRET, INBOUND_WEBHOOK_TOKEN
+# edite DATABASE_URL, REDIS_URL
+# e ADMIN_USER, ADMIN_PASSWORD, NEXTAUTH_SECRET, INBOUND_WEBHOOK_TOKEN, AGENT_API_TOKEN
 
-# symlinks para o Next.js e o worker lerem o .env da raiz
 ln -sf ../../.env apps/web/.env
 ln -sf ../../.env apps/worker/.env
 
 pnpm install
-docker compose up -d        # postgres + redis
-pnpm db:migrate              # aplica as migrations
-pnpm db:seed                 # 1 origem, 1 cep, 1 plano, Settings default
+pnpm db:migrate
+pnpm db:seed
 ```
 
 ## Rodando em dev
@@ -47,7 +45,13 @@ pnpm dev:web      # http://localhost:3000
 pnpm dev:worker   # consome as filas messages/followups
 ```
 
-Depois do login (usuário/senha do `.env`), configure a **OpenAI API key** e os webhooks de saída/contrato em `/configuracoes`.
+Depois do login, em `/configuracoes` configure:
+- **Prompt da IA** — instruções do sistema e regras para o agente (acessível via `GET /api/agent/prompt`)
+- **agentWebhookUrl** — URL do seu sistema de IA (recebe `message.inbound` / `followup.due`)
+- **outboundWebhookUrl** — URL do app de chat (entrega a resposta ao lead)
+- **contractWebhookUrl** — notificação de venda fechada
+
+Documentação completa dos endpoints: `/documentacao` no painel.
 
 ## Testando o webhook de entrada
 
@@ -58,11 +62,18 @@ curl -X POST http://localhost:3000/api/webhooks/inbound \
   -d '{"phone":"5511999999999","type":"text","text":"oi, quero saber sobre planos"}'
 ```
 
-Payload de áudio: `{"phone": "...", "type": "audio", "audioBase64": "...", "mimeType": "audio/ogg"}`.
+Resposta da IA:
+
+```bash
+curl -X POST http://localhost:3000/api/webhooks/agent/reply \
+  -H "Content-Type: application/json" \
+  -H "x-webhook-token: SEU_AGENT_API_TOKEN" \
+  -d '{"phone":"5511999999999","text":"Olá! Como posso ajudar?"}'
+```
 
 ## Variáveis de ambiente
 
-Ver `.env.example`. `DATABASE_URL` e `REDIS_URL` apontam pro docker-compose local por padrão. `OPENAI_API_KEY` no `.env` é só fallback de dev — em produção a key fica em `Settings` (tabela editável pelo painel).
+Ver `.env.example`. Tokens: `INBOUND_WEBHOOK_TOKEN` (chat), `AGENT_API_TOKEN` (IA externa; se vazio, reutiliza o inbound).
 
 ## Scripts úteis
 

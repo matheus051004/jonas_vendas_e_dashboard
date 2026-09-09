@@ -9,4 +9,23 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-export * from "@prisma/client";
+// Named re-exports only: Turbopack can't resolve `export *` from external CJS `@prisma/client`
+// ("exports only available at runtime").
+export {
+  Prisma,
+  PrismaClient,
+  SaleStage,
+  MessageRole,
+  MessageKind,
+} from "@prisma/client";
+
+export type {
+  Client,
+  Settings,
+  Plan,
+  Area,
+  Origin,
+  Contract,
+  Message,
+  AreaPlan,
+} from "@prisma/client";
