@@ -65,6 +65,7 @@ model Plan {
   loyaltyMonths    Int
   description      String
   hubsoftServiceId Int?
+  imageUrl         String?
   active           Boolean  @default(true)
   createdAt        DateTime @default(now())
 
@@ -247,4 +248,13 @@ model Settings {
   hubsoftGruposServicoIds    Int[]   @default([835])
   hubsoftFormaCobrancaId     Int     @default(94)
   hubsoftServicoStatusId     Int     @default(6)
+}
+
+model Upload {
+  id        String   @id @default(cuid())
+  filename  String
+  mimeType  String
+  data      Bytes
+  size      Int
+  createdAt DateTime @default(now())
 }

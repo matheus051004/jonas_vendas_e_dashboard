@@ -12,6 +12,7 @@ export const PlanFormSchema = z.object({
   loyaltyMonths: z.coerce.number().int().min(0, "Informe meses de fidelidade válidos"),
   description: required("a descrição"),
   hubsoftServiceId: z.coerce.number().int().positive().nullable().optional(),
+  imageUrl: z.string().nullable().optional(),
   active: z.boolean(),
   areaIds: z.array(z.string()).default([]),
   packageIds: z.array(z.string()).default([]),

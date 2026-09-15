@@ -124,35 +124,42 @@ export function cleanBoolean(val: unknown): boolean | null {
   return null;
 }
 
-export async function resolvePlan(rawPlanId: unknown) {
-  const clean = cleanString(rawPlanId);
-  if (!clean) return null;
+export async function resolvePlan<T extends Prisma.PlanInclude = { promotions: { include: { promotion: true } } }>(
+  rawPlanId: unknown,
+  include?: T
+): Promise<Prisma.PlanGetPayload<{ include: T }> | null> {
+  const raw = cleanString(rawPlanId);
+  if (!raw) return null;
+  let clean = raw;
+  try {
+    clean = decodeURIComponent(raw);
+  } catch {}
 
-  const include = {
+  const inc = (include ?? {
     promotions: {
       include: { promotion: true },
     },
-  };
+  }) as T;
 
   // 1. Por ID CUID
-  const byId = await prisma.plan.findUnique({ where: { id: clean }, include });
-  if (byId) return byId;
+  const byId = await prisma.plan.findUnique({ where: { id: clean }, include: inc });
+  if (byId) return byId as Prisma.PlanGetPayload<{ include: T }>;
 
   // 2. Por hubsoftServiceId numérico
   if (!isNaN(Number(clean))) {
     const byHubsoft = await prisma.plan.findFirst({
       where: { hubsoftServiceId: Number(clean) },
-      include,
+      include: inc,
     });
-    if (byHubsoft) return byHubsoft;
+    if (byHubsoft) return byHubsoft as Prisma.PlanGetPayload<{ include: T }>;
   }
 
   // 3. Por Nome (case-insensitive)
   const byName = await prisma.plan.findFirst({
     where: { name: { equals: clean, mode: "insensitive" } },
-    include,
+    include: inc,
   });
-  if (byName) return byName;
+  if (byName) return byName as Prisma.PlanGetPayload<{ include: T }>;
 
   return null;
 }
@@ -375,6 +382,62 @@ export async function listPlansByAreaId(rawAreaId: string) {
     areaName: area.name,
     observation: area.observation,
     plans,
+  };
+}
+
+export async function getPlanDetails(rawPlanId: unknown, baseUrl?: string) {
+  const plan = await resolvePlan(rawPlanId, {
+    areas: { include: { area: true } },
+    packages: { include: { package: true } },
+    promotions: { include: { promotion: true } },
+  });
+
+  if (!plan) return null;
+
+  let imageUrl: string | null = null;
+  if (plan.imageUrl) {
+    const trimmed = plan.imageUrl.trim();
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      imageUrl = trimmed;
+    } else if (trimmed.startsWith("/")) {
+      imageUrl = baseUrl ? `${baseUrl.replace(/\/+$/, "")}${trimmed}` : trimmed;
+    }
+  }
+
+  return {
+    id: plan.id,
+    name: plan.name,
+    price: plan.price,
+    priceWithLoyalty: plan.priceWithLoyalty,
+    loyaltyMonths: plan.loyaltyMonths,
+    description: plan.description,
+    hubsoftServiceId: plan.hubsoftServiceId,
+    active: plan.active,
+    imageUrl,
+    areas: plan.areas.map((ap) => ({
+      id: ap.area.id,
+      name: ap.area.name,
+      observation: ap.area.observation,
+    })),
+    packages: plan.packages
+      .map((pp) => pp.package)
+      .filter((pkg) => pkg.active)
+      .map((pkg) => ({
+        id: pkg.id,
+        name: pkg.name,
+        price: pkg.price,
+        description: pkg.description,
+        hubsoftPackageId: pkg.hubsoftPackageId,
+      })),
+    promotions: plan.promotions
+      .map((pp) => pp.promotion)
+      .filter((promo) => promo.active)
+      .map((promo) => ({
+        id: promo.id,
+        name: promo.name,
+        description: promo.description,
+        hubsoftPromotionId: promo.hubsoftPromotionId,
+      })),
   };
 }
 

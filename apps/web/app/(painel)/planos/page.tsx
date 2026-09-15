@@ -3,9 +3,11 @@
 import * as React from "react";
 import {
   Alert,
+  Avatar,
   Box,
   Typography,
   Button,
+  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -31,6 +33,8 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import PhotoCameraOutlinedIcon from "@mui/icons-material/PhotoCameraOutlined";
 
 interface Area {
   id: string;
@@ -57,6 +61,7 @@ interface Plan {
   loyaltyMonths: number;
   description: string;
   hubsoftServiceId?: number | null;
+  imageUrl?: string | null;
   active: boolean;
   areas: { area: Area }[];
   packages: { package: PackageOption }[];
@@ -70,6 +75,7 @@ const EMPTY_FORM = {
   loyaltyMonths: "",
   description: "",
   hubsoftServiceId: "",
+  imageUrl: "",
   active: true,
   areaIds: [] as string[],
   packageIds: [] as string[],
@@ -89,6 +95,9 @@ export default function PlanosPage() {
   const [formError, setFormError] = React.useState<string | null>(null);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [snackbar, setSnackbar] = React.useState({ open: false, message: "" });
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const load = React.useCallback(() => {
     fetch("/api/planos").then((r) => r.json()).then(setPlans);
@@ -102,11 +111,13 @@ export default function PlanosPage() {
   function resetErrors() {
     setFieldErrors({});
     setFormError(null);
+    setUploadError(null);
   }
 
   function openCreate() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setUploading(false);
     resetErrors();
     setOpen(true);
   }
@@ -120,13 +131,48 @@ export default function PlanosPage() {
       loyaltyMonths: String(plan.loyaltyMonths),
       description: plan.description,
       hubsoftServiceId: plan.hubsoftServiceId ? String(plan.hubsoftServiceId) : "",
+      imageUrl: plan.imageUrl ?? "",
       active: plan.active,
       areaIds: plan.areas.map((a) => a.area.id),
       packageIds: plan.packages ? plan.packages.map((p) => p.package.id) : [],
       promotionIds: plan.promotions ? plan.promotions.map((p) => p.promotion.id) : [],
     });
+    setUploading(false);
     resetErrors();
     setOpen(true);
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/uploads", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Erro ao fazer upload da imagem.");
+      }
+
+      setForm((prev) => ({ ...prev, imageUrl: data.url }));
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro ao enviar a imagem. Tente novamente.";
+      setUploadError(message);
+    } finally {
+      setUploading(false);
+      if (e.target) {
+        e.target.value = "";
+      }
+    }
   }
 
   async function handleSave() {
@@ -135,10 +181,11 @@ export default function PlanosPage() {
     const payload = {
       name: form.name.trim(),
       price: form.price,
-      priceWithLoyalty: form.priceWithLoyalty ? form.priceWithLoyalty : null,
+      priceWithLoyalty: form.priceWithLoyalty || null,
       loyaltyMonths: form.loyaltyMonths,
       description: form.description.trim(),
       hubsoftServiceId: form.hubsoftServiceId ? Number(form.hubsoftServiceId) : null,
+      imageUrl: form.imageUrl.trim() || null,
       active: form.active,
       areaIds: form.areaIds,
       packageIds: form.packageIds,
@@ -183,10 +230,11 @@ export default function PlanosPage() {
       body: {
         name: `${plan.name} (cópia)`,
         price: Number(plan.price),
-        priceWithLoyalty: plan.priceWithLoyalty != null ? Number(plan.priceWithLoyalty) : null,
+        priceWithLoyalty: Number(plan.priceWithLoyalty) || null,
         loyaltyMonths: plan.loyaltyMonths,
         description: plan.description,
         hubsoftServiceId: plan.hubsoftServiceId ?? null,
+        imageUrl: plan.imageUrl ?? null,
         active: plan.active,
         areaIds: plan.areas.map((a) => a.area.id),
         packageIds: plan.packages ? plan.packages.map((p) => p.package.id) : [],
@@ -217,13 +265,38 @@ export default function PlanosPage() {
   }
 
   const columns: GridColDef<Plan>[] = [
+    {
+      field: "imageUrl",
+      headerName: "Imagem",
+      width: 90,
+      sortable: false,
+      renderCell: (params) => {
+        if (params.value) {
+          return (
+            <Box sx={{ display: "flex", alignItems: "center", height: "100%" }}>
+              <Avatar
+                variant="rounded"
+                src={params.value}
+                alt={params.row.name}
+                sx={{ width: 36, height: 36, objectFit: "cover" }}
+              />
+            </Box>
+          );
+        }
+        return (
+          <Box sx={{ display: "flex", alignItems: "center", height: "100%", color: "text.disabled" }}>
+            <PhotoCameraOutlinedIcon sx={{ fontSize: 20 }} />
+          </Box>
+        );
+      },
+    },
     { field: "name", headerName: "Nome", flex: 1 },
     { field: "price", headerName: "Sem Fidelidade (R$)", flex: 0.9 },
     {
       field: "priceWithLoyalty",
       headerName: "Com Fidelidade (R$)",
       flex: 0.9,
-      valueGetter: (_v, row) => (row.priceWithLoyalty ? row.priceWithLoyalty : "-"),
+      valueGetter: (_v, row) => row.priceWithLoyalty || "-",
     },
     { field: "loyaltyMonths", headerName: "Fidelidade (meses)", flex: 0.8 },
     {
@@ -362,6 +435,80 @@ export default function PlanosPage() {
             helperText={fieldErrors.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
+          <Box sx={{ mt: 2, mb: 1, p: 2, border: "1px dashed", borderColor: "divider", borderRadius: 2 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+              Imagem do plano
+            </Typography>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={handleFileSelect}
+            />
+
+            {uploadError && (
+              <Alert severity="error" sx={{ mb: 1.5 }} onClose={() => setUploadError(null)}>
+                {uploadError}
+              </Alert>
+            )}
+
+            {form.imageUrl ? (
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5, alignItems: "flex-start" }}>
+                <Box
+                  component="img"
+                  src={form.imageUrl}
+                  alt={form.name || "Preview do plano"}
+                  sx={{
+                    maxHeight: 140,
+                    maxWidth: "100%",
+                    objectFit: "contain",
+                    borderRadius: 1.5,
+                    border: "1px solid",
+                    borderColor: "divider",
+                    bgcolor: "action.hover",
+                    p: 0.5,
+                  }}
+                />
+                <Box sx={{ display: "flex", gap: 1, alignItems: "center", flexWrap: "wrap" }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={uploading ? <CircularProgress size={16} color="inherit" /> : <CloudUploadIcon />}
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploading ? "Enviando..." : "Trocar imagem"}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    size="small"
+                    startIcon={<DeleteIcon />}
+                    disabled={uploading}
+                    onClick={() => setForm({ ...form, imageUrl: "" })}
+                  >
+                    Remover imagem
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  startIcon={uploading ? <CircularProgress size={16} color="inherit" /> : <CloudUploadIcon />}
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading ? "Enviando..." : "Fazer upload de imagem"}
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  Formatos aceitos: JPG, PNG, WebP. A imagem será usada no envio de detalhes ao cliente via chat/WhatsApp.
+                </Typography>
+              </Box>
+            )}
+          </Box>
           <FormControl fullWidth margin="normal">
             <InputLabel>Áreas do plano</InputLabel>
             <Select
@@ -434,8 +581,8 @@ export default function PlanosPage() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancelar</Button>
-          <Button variant="contained" onClick={handleSave}>
+          <Button onClick={() => setOpen(false)} disabled={uploading}>Cancelar</Button>
+          <Button variant="contained" onClick={handleSave} disabled={uploading}>
             Salvar
           </Button>
         </DialogActions>

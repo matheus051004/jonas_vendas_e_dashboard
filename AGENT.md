@@ -90,6 +90,7 @@ Auth: `x-webhook-token` = `AGENT_API_TOKEN` (fallback `INBOUND_WEBHOOK_TOKEN`). 
 | GET | `/api/agent/origins` | listOrigins |
 | GET | `/api/agent/areas` | listAreas |
 | GET | `/api/agent/areas/:areaId/plans` | listPlansByArea |
+| GET | `/api/agent/plans/:planId` | getPlanDetails (detalhes completos do plano + imageUrl) |
 
 Serviços em `packages/shared/src/agent-services.ts`.
 

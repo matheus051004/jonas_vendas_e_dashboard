@@ -650,6 +650,7 @@ curl -X POST ${inboundUrl} \\
                 { m: "GET", p: "/api/agent/origins", d: "Lista canais de origem ativos (Instagram, Google, etc.)" },
                 { m: "GET", p: "/api/agent/areas", d: "Lista áreas de cobertura ativas e observações de taxa" },
                 { m: "GET", p: "/api/agent/areas/:areaId/plans", d: "Lista planos de internet disponíveis na área" },
+                { m: "GET", p: "/api/agent/plans/:planId", d: "Consulta detalhes completos de um plano específico (inclui imagem, áreas, pacotes e promoções)" },
                 { m: "GET", p: "/api/agent/clients/:phone", d: "Consulta cadastro completo e contexto do lead" },
                 { m: "GET", p: "/api/agent/clients/:phone/messages?limit=30", d: "Consulta histórico recente de mensagens" },
                 { m: "PATCH", p: "/api/agent/clients/:phone", d: "Atualiza dados do lead (nome, área, operadora, valor...)" },
@@ -795,6 +796,47 @@ curl -X POST ${inboundUrl} \\
       "packages": []
     }
   ]
+}`}
+          />
+
+          {/* Obter Detalhes do Plano Individual */}
+          <ToolDetailCard
+            title="Obter Detalhes do Plano Individual (getPlanDetails)"
+            method="GET"
+            path="/api/agent/plans/:planId"
+            description="Retorna todos os dados e vantagens de um plano específico selecionado, incluindo a URL pública da sua imagem promocional para envio direto ao cliente no chat/WhatsApp. Esta ferramenta deve ser chamada quando o cliente quiser saber detalhes aprofundados de um plano ou quando a IA for enviar a imagem do plano (a listagem por área não retorna URLs de imagem para economizar contexto)."
+            fields={[
+              {
+                name: ":planId",
+                type: "string (path)",
+                required: "Sim",
+                description: "ID CUID, hubsoftServiceId numérico ou nome do plano, ex.: seed-plan-300 ou 947",
+              },
+            ]}
+            curlCode={`curl -X GET ${origin}/api/agent/plans/seed-plan-300 \\
+  -H "x-webhook-token: SEU_AGENT_API_TOKEN"`}
+            responseCode={`{
+  "ok": true,
+  "plan": {
+    "id": "seed-plan-300",
+    "name": "Internet 300 Mega",
+    "price": "89.90",
+    "priceWithLoyalty": "69.90",
+    "loyaltyMonths": 12,
+    "description": "300 Mega de download, Wi-Fi 6 incluso, instalação grátis.",
+    "hubsoftServiceId": 947,
+    "imageUrl": "https://seu-dominio.com/api/uploads/cm7xyz...",
+    "active": true,
+    "areas": [
+      { "id": "cm7b1area0001", "name": "Palmeiras e Piraputanga", "observation": "Taxa de instalação: ISENTO" }
+    ],
+    "packages": [
+      { "id": "pkg-fixo-ilimitado", "name": "Telefone Fixo Ilimitado", "price": "19.90", "description": "Ligações ilimitadas para fixo e móvel." }
+    ],
+    "promotions": [
+      { "id": "promo-instalacao-gratis", "name": "Instalação Grátis", "description": "Isenção total da taxa", "hubsoftPromotionId": 12 }
+    ]
+  }
 }`}
           />
 

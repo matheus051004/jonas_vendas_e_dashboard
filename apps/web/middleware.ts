@@ -7,6 +7,13 @@ const PUBLIC_PATHS = ["/login", "/api/webhooks", "/api/agent", "/api/branding"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Imagens de planos são públicas para visualização (GET).
+  // Upload (POST) exige autenticação de sessão do painel.
+  if (pathname.startsWith("/api/uploads") && req.method === "GET") {
+    return NextResponse.next();
+  }
+
   if (PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return NextResponse.next();
   }

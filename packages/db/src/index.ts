@@ -28,4 +28,5 @@ export type {
   Contract,
   Message,
   AreaPlan,
+  Upload,
 } from "@prisma/client";
