@@ -88,6 +88,7 @@ Auth: `x-webhook-token` = `AGENT_API_TOKEN` (fallback `INBOUND_WEBHOOK_TOKEN`). 
 | POST | `/api/agent/clients/:phone/contract-pj` | registerContract PJ (gera contrato no Hubsoft e dispara webhook; NÃO marca FECHOU_VENDA) |
 | POST | `/api/agent/clients/:phone/contract-signed` | confirmContractSigned (chamar quando o lead assinar o contrato -> marca FECHOU_VENDA) |
 | GET | `/api/agent/origins` | listOrigins |
+| GET | `/api/agent/due-dates` | listDueDates (dias de vencimento 1-31 e seus IDs no Hubsoft) |
 | GET | `/api/agent/areas` | listAreas |
 | GET | `/api/agent/areas/:areaId/plans` | listPlansByArea |
 | GET | `/api/agent/plans/:planId` | getPlanDetails (detalhes completos do plano + imageUrl) |

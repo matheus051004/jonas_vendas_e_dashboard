@@ -317,6 +317,58 @@ export async function listActiveAreas() {
   });
 }
 
+export async function listActiveDueDates() {
+  const dueDates = await prisma.dueDate.findMany({
+    where: { active: true },
+    orderBy: { day: "asc" },
+  });
+  return dueDates.map((d) => ({
+    id: d.id,
+    day: d.day,
+    hubsoftId: d.hubsoftId,
+    active: d.active,
+    formatted: `Dia ${String(d.day).padStart(2, "0")}`,
+  }));
+}
+
+export async function listAllDueDates() {
+  const dueDates = await prisma.dueDate.findMany({
+    orderBy: { day: "asc" },
+  });
+  return dueDates.map((d) => ({
+    id: d.id,
+    day: d.day,
+    hubsoftId: d.hubsoftId,
+    active: d.active,
+    formatted: `Dia ${String(d.day).padStart(2, "0")}`,
+  }));
+}
+
+export async function resolveDueDate(raw: unknown) {
+  if (raw === null || raw === undefined) return null;
+  const clean = cleanString(raw);
+  if (!clean) return null;
+
+  // 1. Por ID CUID
+  const byId = await prisma.dueDate.findUnique({ where: { id: clean } });
+  if (byId) return byId;
+
+  // 2. Por número de dia (1-31)
+  const num = cleanNumber(clean);
+  if (num !== null && num >= 1 && num <= 31) {
+    const byDay = await prisma.dueDate.findUnique({ where: { day: Math.round(num) } });
+    if (byDay) return byDay;
+  }
+
+  // 3. Por hubsoftId
+  if (num !== null) {
+    const byHubsoft = await prisma.dueDate.findFirst({ where: { hubsoftId: Math.round(num) } });
+    if (byHubsoft) return byHubsoft;
+  }
+
+  return null;
+}
+
 export async function listPlansByAreaId(rawAreaId: string) {
   const clean = decodeURIComponent(rawAreaId).trim();
   const area =
@@ -454,6 +506,8 @@ export async function registerClientContract(clientId: string, input: RegisterCo
   const plan = await resolvePlan(input.planId);
   const resolvedPackages = await resolveAndValidatePackages(input.packageIds, plan);
   const settings = await getSettings();
+  const resolvedDueDate = await resolveDueDate(input.dueDateDay ?? input.dueDateId);
+  const hubsoftVencimentoId = resolvedDueDate?.hubsoftId ?? settings.hubsoftVencimentoId ?? 9;
 
   const cleanCpf = input.cpf.replace(/\D/g, "");
   const tipoPessoa = cleanCpf.length === 14 ? "pj" : "pf";
@@ -518,7 +572,7 @@ export async function registerClientContract(clientId: string, input: RegisterCo
       atualizar_coords_auto: true,
     },
     id_servico: plan?.hubsoftServiceId ?? 947,
-    id_vencimento: settings.hubsoftVencimentoId ?? 9,
+    id_vencimento: hubsoftVencimentoId,
     id_usuario_vendedor: settings.hubsoftVendedorId ?? 636,
     id_servico_status: settings.hubsoftServicoStatusId ?? 6,
     valor: plan?.price ? Number(plan.price) : 199.9,
@@ -585,6 +639,7 @@ export async function registerClientContract(clientId: string, input: RegisterCo
     hubsoftClientId: hubsoftClientId,
     hubsoftProtocol: hubsoftProtocol,
     hubsoftRawResponse: rawJson ? (rawJson as Prisma.InputJsonValue) : undefined,
+    dueDateId: resolvedDueDate ? resolvedDueDate.id : null,
   };
 
   const contract = await prisma.$transaction(async (tx) => {
@@ -645,6 +700,13 @@ export async function registerClientContract(clientId: string, input: RegisterCo
     complement: complement ?? undefined,
     reference: reference ?? undefined,
     hubsoftClientId: hubsoftClientId,
+    dueDate: resolvedDueDate
+      ? {
+          id: resolvedDueDate.id,
+          day: resolvedDueDate.day,
+          hubsoftId: resolvedDueDate.hubsoftId,
+        }
+      : null,
     metadata,
   });
 
@@ -665,6 +727,8 @@ export async function registerClientContractPJ(
     getSettings(),
     resolvePlan(input.planId),
   ]);
+  const resolvedDueDate = await resolveDueDate(input.dueDateDay ?? input.dueDateId);
+  const hubsoftVencimentoId = resolvedDueDate?.hubsoftId ?? settings.hubsoftVencimentoId ?? 9;
   const resolvedPackages = await resolveAndValidatePackages(input.packageIds, plan);
 
   const cleanCnpj = input.cnpj.replace(/\D/g, "");
@@ -715,7 +779,7 @@ export async function registerClientContractPJ(
       atualizar_coords_auto: true,
     },
     id_servico: plan?.hubsoftServiceId ?? 947,
-    id_vencimento: settings.hubsoftVencimentoId ?? 9,
+    id_vencimento: hubsoftVencimentoId,
     id_usuario_vendedor: settings.hubsoftVendedorId ?? 636,
     id_servico_status: settings.hubsoftServicoStatusId ?? 6,
     valor: plan?.price ? Number(plan.price) : 199.9,
@@ -780,6 +844,7 @@ export async function registerClientContractPJ(
     hubsoftClientId: hubsoftClientId,
     hubsoftProtocol: hubsoftProtocol,
     hubsoftRawResponse: rawJson ? (rawJson as Prisma.InputJsonValue) : undefined,
+    dueDateId: resolvedDueDate ? resolvedDueDate.id : null,
   };
 
   const contract = await prisma.$transaction(async (tx) => {
@@ -835,6 +900,13 @@ export async function registerClientContractPJ(
     complement: complement ?? undefined,
     reference: reference ?? undefined,
     hubsoftClientId: hubsoftClientId,
+    dueDate: resolvedDueDate
+      ? {
+          id: resolvedDueDate.id,
+          day: resolvedDueDate.day,
+          hubsoftId: resolvedDueDate.hubsoftId,
+        }
+      : null,
     metadata,
   });
 

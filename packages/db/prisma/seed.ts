@@ -100,13 +100,15 @@ Quando receber um evento de follow-up do sistema, significa que o cliente parou 
 1. \`listOrigins()\`: Retorna as origens de tráfego/campanhas ativas para identificação do canal de captação.
 2. \`listAreas()\`: Retorna os bairros/regiões atendidas pela operadora.
 3. \`listPlansByArea(areaId)\`: Retorna os planos e pacotes adicionais aceitos, além de observações disponíveis para a região específica informada.
-4. \`getClient(phone)\`: Consulta o perfil atual e dados do lead.
-5. \`getClientMessages(phone)\`: Consulta o histórico de mensagens anteriores.
-6. \`updateClient(phone, { name, areaId, originId, currentProvider, currentPrice, hadBadExperience, badExperienceNote })\`: Atualiza os dados cadastrais do cliente conforme ele for informando.
-7. \`setClientStage(phone, { stage })\`: Atualiza a etapa no funil (\`NOVO_LEAD\`, \`INTERESSADO\`, \`ACHOU_CARO\`, \`FECHOU_VENDA\`, \`DESISTIU\`).
-8. \`registerContract(phone, { hubsoftToken, planId, packageIds, fullName, cpf, phonePrimary, phoneSecondary, email, gender, rg, rgEmissor, birthDate, motherName, fatherName, maritalStatus, profession, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Física e gera o cliente/serviço no Hubsoft com tipo_pessoa='pf' e ids_pacotes, e dispara webhook de contrato.
-9. \`registerContractPJ(phone, { hubsoftToken, planId, packageIds, companyName, tradeName, cnpj, stateRegistration, contactName, phonePrimary, phoneSecondary, email, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Jurídica e gera o cliente/serviço no Hubsoft com tipo_pessoa='pj' e ids_pacotes, e dispara webhook de contrato.
-10. \`confirmContractSigned(phone, { observation? })\`: Confirma que o lead assinou o contrato e avança a etapa para \`FECHOU_VENDA\`.\`;
+4. \`listDueDates()\`: Retorna os dias de vencimento disponíveis (1 a 31) e seus respectivos IDs no Hubsoft para escolha do cliente.
+5. \`getClient(phone)\`: Consulta o perfil atual e dados do lead.
+6. \`getClientMessages(phone)\`: Consulta o histórico de mensagens anteriores.
+7. \`updateClient(phone, { name, areaId, originId, currentProvider, currentPrice, hadBadExperience, badExperienceNote })\`: Atualiza os dados cadastrais do cliente conforme ele for informando.
+8. \`setClientStage(phone, { stage })\`: Atualiza a etapa no funil (\`NOVO_LEAD\`, \`INTERESSADO\`, \`ACHOU_CARO\`, \`FECHOU_VENDA\`, \`DESISTIU\`).
+9. \`registerContract(phone, { hubsoftToken, planId, packageIds, dueDateDay, fullName, cpf, phonePrimary, phoneSecondary, email, gender, rg, rgEmissor, birthDate, motherName, fatherName, maritalStatus, profession, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Física e gera o cliente/serviço no Hubsoft com tipo_pessoa='pf', id_vencimento e ids_pacotes, e dispara webhook de contrato.
+10. \`registerContractPJ(phone, { hubsoftToken, planId, packageIds, dueDateDay, companyName, tradeName, cnpj, stateRegistration, contactName, phonePrimary, phoneSecondary, email, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Jurídica e gera o cliente/serviço no Hubsoft com tipo_pessoa='pj', id_vencimento e ids_pacotes, e dispara webhook de contrato.
+11. \`confirmContractSigned(phone, { observation? })\`: Confirma que o lead assinou o contrato e avança a etapa para \`FECHOU_VENDA\`.
+`;
 
 async function main() {
   await prisma.settings.upsert({
@@ -184,7 +186,21 @@ async function main() {
     create: { areaId: area.id, planId: plan.id },
   });
 
-  console.log("Seed ok:", { origin: origin.name, plan: plan.name, package: pkg.name, area: area.name });
+  const defaultDueDates = [
+    { day: 5, hubsoftId: 8 },
+    { day: 10, hubsoftId: 9 },
+    { day: 15, hubsoftId: 10 },
+    { day: 20, hubsoftId: 11 },
+  ];
+  for (const dd of defaultDueDates) {
+    await prisma.dueDate.upsert({
+      where: { day: dd.day },
+      update: { hubsoftId: dd.hubsoftId },
+      create: { day: dd.day, hubsoftId: dd.hubsoftId },
+    });
+  }
+
+  console.log("Seed ok:", { origin: origin.name, plan: plan.name, package: pkg.name, area: area.name, dueDates: defaultDueDates.length });
 }
 
 main()

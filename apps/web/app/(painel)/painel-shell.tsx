@@ -22,6 +22,7 @@ import PeopleIcon from "@mui/icons-material/People";
 import WifiIcon from "@mui/icons-material/Wifi";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { href: "/planos", label: "Planos", icon: <WifiIcon /> },
   { href: "/pacotes", label: "Pacotes", icon: <Inventory2Icon /> },
   { href: "/promocoes", label: "Promoções", icon: <LocalOfferIcon /> },
+  { href: "/vencimentos", label: "Vencimentos", icon: <CalendarMonthIcon /> },
   { href: "/areas", label: "Áreas", icon: <LocationOnIcon /> },
   { href: "/origens", label: "Origens", icon: <CampaignIcon /> },
   { href: "/configuracoes", label: "Configurações", icon: <SettingsIcon /> },

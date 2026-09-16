@@ -49,6 +49,19 @@ export const OriginFormSchema = z.object({
   active: z.boolean(),
 });
 
+export const DueDateFormSchema = z.object({
+  day: z.coerce
+    .number({ invalid_type_error: "Informe um dia válido" })
+    .int("O dia deve ser um número inteiro")
+    .min(1, "O dia deve ser entre 1 e 31")
+    .max(31, "O dia deve ser entre 1 e 31"),
+  hubsoftId: z.coerce
+    .number({ invalid_type_error: "Informe o ID do Hubsoft" })
+    .int("O ID do Hubsoft deve ser um número inteiro")
+    .positive("O ID do Hubsoft deve ser maior que zero"),
+  active: z.boolean().default(true),
+});
+
 export const ClientEditSchema = z.object({
   name: z.string().nullable(),
   areaId: z.string().nullable(),

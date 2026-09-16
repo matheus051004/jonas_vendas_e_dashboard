@@ -649,6 +649,7 @@ curl -X POST ${inboundUrl} \\
                 { m: "GET", p: "/api/agent/prompt", d: "Prompt do sistema / persona e instruções de atendimento" },
                 { m: "GET", p: "/api/agent/origins", d: "Lista canais de origem ativos (Instagram, Google, etc.)" },
                 { m: "GET", p: "/api/agent/areas", d: "Lista áreas de cobertura ativas e observações de taxa" },
+                { m: "GET", p: "/api/agent/due-dates", d: "Lista dias de vencimento disponíveis (1 a 31) e seus IDs no Hubsoft" },
                 { m: "GET", p: "/api/agent/areas/:areaId/plans", d: "Lista planos de internet disponíveis na área" },
                 { m: "GET", p: "/api/agent/plans/:planId", d: "Consulta detalhes completos de um plano específico (inclui imagem, áreas, pacotes e promoções)" },
                 { m: "GET", p: "/api/agent/clients/:phone", d: "Consulta cadastro completo e contexto do lead" },
@@ -718,6 +719,49 @@ curl -X POST ${inboundUrl} \\
     {
       "id": "cm7a4nopq0004",
       "name": "Folheto"
+    }
+  ]
+}`}
+          />
+
+          {/* 3. Dias de Vencimento */}
+          <ToolDetailCard
+            title="3. Listar Dias de Vencimento (listDueDates)"
+            method="GET"
+            path="/api/agent/due-dates"
+            description="Retorna os dias de vencimento disponíveis (1 a 31) e seus respectivos IDs no Hubsoft (id_vencimento). Permite que a IA consulte as datas de vencimento ativas para oferecer como opção ao cliente durante o fechamento da venda."
+            curlCode={`curl -X GET ${origin}/api/agent/due-dates \\
+  -H "x-webhook-token: SEU_AGENT_API_TOKEN"`}
+            responseCode={`{
+  "ok": true,
+  "dueDates": [
+    {
+      "id": "cm7d1venc0001",
+      "day": 5,
+      "hubsoftId": 8,
+      "active": true,
+      "formatted": "Dia 05"
+    },
+    {
+      "id": "cm7d2venc0002",
+      "day": 10,
+      "hubsoftId": 9,
+      "active": true,
+      "formatted": "Dia 10"
+    },
+    {
+      "id": "cm7d3venc0003",
+      "day": 15,
+      "hubsoftId": 10,
+      "active": true,
+      "formatted": "Dia 15"
+    },
+    {
+      "id": "cm7d4venc0004",
+      "day": 20,
+      "hubsoftId": 11,
+      "active": true,
+      "formatted": "Dia 20"
     }
   ]
 }`}

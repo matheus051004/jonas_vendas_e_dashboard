@@ -29,4 +29,5 @@ export type {
   Message,
   AreaPlan,
   Upload,
+  DueDate,
 } from "@prisma/client";

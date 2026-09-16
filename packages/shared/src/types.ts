@@ -84,6 +84,11 @@ export interface ContractWebhookPayload {
   complement?: string | null;
   reference?: string | null;
   hubsoftClientId?: number | null;
+  dueDate?: {
+    id: string;
+    day: number;
+    hubsoftId: number;
+  } | null;
   packages?: Array<{
     id: string;
     name: string;
@@ -192,6 +197,8 @@ export const RegisterContractBodySchema = z.object({
     if (Array.isArray(val)) return val.map((item) => (item != null ? String(item).trim() : "")).filter(Boolean);
     return val;
   }, z.array(z.string()).optional()),
+  dueDateDay: z.unknown().optional(),
+  dueDateId: z.unknown().optional(),
 });
 
 export type RegisterContractInput = z.infer<typeof RegisterContractBodySchema>;
@@ -218,7 +225,24 @@ export const RegisterContractPJBodySchema = z.object({
     if (Array.isArray(val)) return val.map((item) => (item != null ? String(item).trim() : "")).filter(Boolean);
     return val;
   }, z.array(z.string()).optional()),
+  dueDateDay: z.unknown().optional(),
+  dueDateId: z.unknown().optional(),
 });
 
 export type RegisterContractPJInput = z.infer<typeof RegisterContractPJBodySchema>;
+
+export const DueDateSchema = z.object({
+  day: z.coerce
+    .number({ invalid_type_error: "Informe um dia válido" })
+    .int("O dia deve ser um número inteiro")
+    .min(1, "O dia deve ser entre 1 e 31")
+    .max(31, "O dia deve ser entre 1 e 31"),
+  hubsoftId: z.coerce
+    .number({ invalid_type_error: "Informe o ID do Hubsoft" })
+    .int("O ID deve ser um número inteiro")
+    .positive("O ID do Hubsoft deve ser maior que zero"),
+  active: z.boolean().default(true),
+});
+
+export type DueDateInput = z.infer<typeof DueDateSchema>;
 

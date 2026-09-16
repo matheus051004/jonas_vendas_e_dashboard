@@ -196,11 +196,26 @@ model Contract {
   hubsoftClientId    Int?
   hubsoftProtocol    String?
   hubsoftRawResponse Json?
+  dueDateId          String?
   createdAt          DateTime @default(now())
 
   client   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
   plan     Plan?             @relation(fields: [planId], references: [id])
+  dueDate  DueDate?          @relation(fields: [dueDateId], references: [id], onDelete: SetNull)
   packages ContractPackage[]
+}
+
+model DueDate {
+  id        String   @id @default(cuid())
+  day       Int      @unique
+  hubsoftId Int
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contracts Contract[]
+
+  @@index([day])
 }
 
 model Message {
