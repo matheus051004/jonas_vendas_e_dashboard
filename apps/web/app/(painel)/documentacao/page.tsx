@@ -1122,6 +1122,12 @@ curl -X POST ${inboundUrl} \\
                 description: "Bearer token de autenticação da API do Hubsoft",
               },
               {
+                name: "dueDateId",
+                type: "string (body)",
+                required: "Sim",
+                description: "ID da data de vencimento cadastrada no sistema (obtido via GET /api/agent/due-dates). O sistema converte automaticamente para o id_vencimento do Hubsoft.",
+              },
+              {
                 name: "fullName",
                 type: "string (body)",
                 required: "Sim",
@@ -1260,6 +1266,7 @@ curl -X POST ${inboundUrl} \\
   -d '{
     "hubsoftToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
     "planId": "seed-plan-300",
+    "dueDateId": "cm7d2venc0002",
     "packageIds": ["pkg-fixo-ilimitado"],
     "fullName": "Carlos Eduardo da Silva",
     "cpf": "54668653381",
@@ -1306,6 +1313,12 @@ curl -X POST ${inboundUrl} \\
                 type: "string (body)",
                 required: "Sim",
                 description: "Bearer token de autenticação da API do Hubsoft",
+              },
+              {
+                name: "dueDateId",
+                type: "string (body)",
+                required: "Sim",
+                description: "ID da data de vencimento cadastrada no sistema (obtido via GET /api/agent/due-dates). O sistema converte automaticamente para o id_vencimento do Hubsoft.",
               },
               {
                 name: "companyName",
@@ -1416,6 +1429,7 @@ curl -X POST ${inboundUrl} \\
   -d '{
     "hubsoftToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
     "planId": "seed-plan-300",
+    "dueDateId": "cm7d2venc0002",
     "packageIds": ["pkg-fixo-ilimitado"],
     "companyName": "Tech Solucoes Empresariais Ltda",
     "tradeName": "Tech Solucoes",

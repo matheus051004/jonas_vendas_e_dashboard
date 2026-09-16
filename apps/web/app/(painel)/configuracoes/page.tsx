@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -37,7 +38,6 @@ interface Settings {
   outboundWebhookSecret: string | null;
   hubsoftBaseUrl: string;
   hubsoftVendedorId: number;
-  hubsoftVencimentoId: number;
   hubsoftMotivoContratacaoId: number;
   hubsoftGruposClienteIds: number[];
   hubsoftGruposServicoIds: number[];
@@ -65,7 +65,6 @@ const WEBHOOK_FIELDS: (keyof Settings)[] = [
 const HUBSOFT_FIELDS: (keyof Settings)[] = [
   "hubsoftBaseUrl",
   "hubsoftVendedorId",
-  "hubsoftVencimentoId",
   "hubsoftMotivoContratacaoId",
   "hubsoftGruposClienteIds",
   "hubsoftGruposServicoIds",
@@ -175,7 +174,6 @@ export default function ConfiguracoesPage() {
           outboundWebhookSecret: data.outboundWebhookSecret ?? null,
           hubsoftBaseUrl: data.hubsoftBaseUrl || "https://api.ligtop.hubsoft.com.br",
           hubsoftVendedorId: data.hubsoftVendedorId ?? 636,
-          hubsoftVencimentoId: data.hubsoftVencimentoId ?? 9,
           hubsoftMotivoContratacaoId: data.hubsoftMotivoContratacaoId ?? 48,
           hubsoftGruposClienteIds: data.hubsoftGruposClienteIds?.length ? data.hubsoftGruposClienteIds : [4],
           hubsoftGruposServicoIds: data.hubsoftGruposServicoIds?.length ? data.hubsoftGruposServicoIds : [835],
@@ -692,7 +690,7 @@ export default function ConfiguracoesPage() {
           />
 
           <Grid container spacing={2}>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
               <TextField
                 label="ID Vendedor (id_usuario_vendedor)"
                 type="number"
@@ -703,18 +701,7 @@ export default function ConfiguracoesPage() {
                 onChange={(e) => setForm({ ...form, hubsoftVendedorId: Number(e.target.value) })}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-              <TextField
-                label="ID Vencimento (id_vencimento)"
-                type="number"
-                fullWidth
-                value={form.hubsoftVencimentoId}
-                error={!!fieldErrors.hubsoftVencimentoId}
-                helperText={fieldErrors.hubsoftVencimentoId ?? "Padrão: 9"}
-                onChange={(e) => setForm({ ...form, hubsoftVencimentoId: Number(e.target.value) })}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
               <TextField
                 label="ID Motivo de Contratação"
                 type="number"
@@ -725,7 +712,7 @@ export default function ConfiguracoesPage() {
                 onChange={(e) => setForm({ ...form, hubsoftMotivoContratacaoId: Number(e.target.value) })}
               />
             </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
               <TextField
                 label="ID Status do Serviço"
                 type="number"
@@ -774,6 +761,14 @@ export default function ConfiguracoesPage() {
               />
             </Grid>
           </Grid>
+
+          <Alert severity="info" sx={{ mt: 1 }}>
+            Os <strong>dias de vencimento</strong> são gerenciados dinamicamente na tela de{" "}
+            <a href="/vencimentos" style={{ fontWeight: 600, color: "inherit" }}>
+              Vencimentos
+            </a>{" "}
+            e escolhidos pelo cliente junto à IA no momento do fechamento do contrato (via <code>dueDateId</code>).
+          </Alert>
 
           <Stack direction="row" justifyContent="flex-end">
             <Button variant="contained" onClick={() => void handleSaveHubsoft()}>

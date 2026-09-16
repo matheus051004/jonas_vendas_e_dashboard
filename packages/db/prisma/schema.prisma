@@ -257,7 +257,6 @@ model Settings {
   // Padrões de integração com Hubsoft
   hubsoftBaseUrl             String  @default("https://api.ligtop.hubsoft.com.br")
   hubsoftVendedorId          Int     @default(636)
-  hubsoftVencimentoId        Int     @default(9)
   hubsoftMotivoContratacaoId Int     @default(48)
   hubsoftGruposClienteIds    Int[]   @default([4])
   hubsoftGruposServicoIds    Int[]   @default([835])

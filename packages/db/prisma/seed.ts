@@ -61,20 +61,22 @@ Seu objetivo é atender potenciais clientes (leads) via WhatsApp, entender as ne
 ---
 
 #### Cenário A: Contratação Pessoa Física (CPF) ➡️ Usar ferramenta \`registerContract\`
-Divida a coleta em 2 passos naturais:
+Divida a coleta em passos naturais:
 1. **Passo 1 (Endereço de Instalação):** CEP, Rua / Logradouro, Número, Bairro, Complemento (se houver) e Ponto de referência.
 2. **Passo 2 (Dados Pessoais do Titular):** Nome completo, CPF, RG com órgão emissor (ex: SSP/SC), Data de nascimento (AAAA-MM-DD), Nome da mãe, Nome do pai (se constar no documento), Estado civil, Gênero (masculino/feminino), Profissão, E-mail e Telefone de recado.
-3. **Chamada da ferramenta:**
-   Chame \`registerContract(phone, { hubsoftToken, planId, fullName, cpf, phonePrimary, phoneSecondary, email, gender, rg, rgEmissor, birthDate, motherName, fatherName, maritalStatus, profession, cep, street, number, neighborhood, complement, reference, observation })\`.
+3. **Passo 3 (Dia de Vencimento da Fatura):** Chame \`listDueDates()\` para consultar os dias disponíveis (ex.: dia 05, 10, 15, 20) e pergunte qual o cliente prefere. Guarde o \`dueDateId\` da opção escolhida.
+4. **Chamada da ferramenta:**
+   Chame \`registerContract(phone, { hubsoftToken, planId, dueDateId, fullName, cpf, phonePrimary, phoneSecondary, email, gender, rg, rgEmissor, birthDate, motherName, fatherName, maritalStatus, profession, cep, street, number, neighborhood, complement, reference, observation })\`.
 
 ---
 
 #### Cenário B: Contratação Pessoa Jurídica (CNPJ) ➡️ Usar ferramenta \`registerContractPJ\`
-Divida a coleta em 2 passos naturais:
+Divida a coleta em passos naturais:
 1. **Passo 1 (Endereço Comercial de Instalação):** CEP, Rua / Logradouro, Número, Bairro, Complemento (sala, andar, galpão se houver) e Ponto de referência.
 2. **Passo 2 (Dados Empresariais):** Razão Social, Nome Fantasia, CNPJ, Inscrição Estadual (ou "ISENTO"), Nome completo do responsável/contato, E-mail corporativo/financeiro e Telefone secundário/ramal.
-3. **Chamada da ferramenta:**
-   Chame \`registerContractPJ(phone, { hubsoftToken, planId, companyName, tradeName, cnpj, stateRegistration, contactName, phonePrimary, phoneSecondary, email, cep, street, number, neighborhood, complement, reference, observation })\`.
+3. **Passo 3 (Dia de Vencimento da Fatura):** Chame \`listDueDates()\` para consultar os dias disponíveis e pergunte qual a empresa prefere. Guarde o \`dueDateId\` da opção escolhida.
+4. **Chamada da ferramenta:**
+   Chame \`registerContractPJ(phone, { hubsoftToken, planId, dueDateId, companyName, tradeName, cnpj, stateRegistration, contactName, phonePrimary, phoneSecondary, email, cep, street, number, neighborhood, complement, reference, observation })\`.
 
 ---
 
@@ -100,13 +102,13 @@ Quando receber um evento de follow-up do sistema, significa que o cliente parou 
 1. \`listOrigins()\`: Retorna as origens de tráfego/campanhas ativas para identificação do canal de captação.
 2. \`listAreas()\`: Retorna os bairros/regiões atendidas pela operadora.
 3. \`listPlansByArea(areaId)\`: Retorna os planos e pacotes adicionais aceitos, além de observações disponíveis para a região específica informada.
-4. \`listDueDates()\`: Retorna os dias de vencimento disponíveis (1 a 31) e seus respectivos IDs no Hubsoft para escolha do cliente.
+4. \`listDueDates()\`: Retorna os dias de vencimento disponíveis (1 a 31) com seus respectivos IDs para que o cliente escolha o melhor dia de vencimento da fatura.
 5. \`getClient(phone)\`: Consulta o perfil atual e dados do lead.
 6. \`getClientMessages(phone)\`: Consulta o histórico de mensagens anteriores.
 7. \`updateClient(phone, { name, areaId, originId, currentProvider, currentPrice, hadBadExperience, badExperienceNote })\`: Atualiza os dados cadastrais do cliente conforme ele for informando.
 8. \`setClientStage(phone, { stage })\`: Atualiza a etapa no funil (\`NOVO_LEAD\`, \`INTERESSADO\`, \`ACHOU_CARO\`, \`FECHOU_VENDA\`, \`DESISTIU\`).
-9. \`registerContract(phone, { hubsoftToken, planId, packageIds, dueDateDay, fullName, cpf, phonePrimary, phoneSecondary, email, gender, rg, rgEmissor, birthDate, motherName, fatherName, maritalStatus, profession, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Física e gera o cliente/serviço no Hubsoft com tipo_pessoa='pf', id_vencimento e ids_pacotes, e dispara webhook de contrato.
-10. \`registerContractPJ(phone, { hubsoftToken, planId, packageIds, dueDateDay, companyName, tradeName, cnpj, stateRegistration, contactName, phonePrimary, phoneSecondary, email, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Jurídica e gera o cliente/serviço no Hubsoft com tipo_pessoa='pj', id_vencimento e ids_pacotes, e dispara webhook de contrato.
+9. \`registerContract(phone, { hubsoftToken, planId, dueDateId, packageIds, fullName, cpf, phonePrimary, phoneSecondary, email, gender, rg, rgEmissor, birthDate, motherName, fatherName, maritalStatus, profession, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Física e gera o cliente/serviço no Hubsoft com tipo_pessoa='pf', id_vencimento (resolvido a partir do dueDateId) e ids_pacotes, e dispara webhook de contrato.
+10. \`registerContractPJ(phone, { hubsoftToken, planId, dueDateId, packageIds, companyName, tradeName, cnpj, stateRegistration, contactName, phonePrimary, phoneSecondary, email, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Jurídica e gera o cliente/serviço no Hubsoft com tipo_pessoa='pj', id_vencimento (resolvido a partir do dueDateId) e ids_pacotes, e dispara webhook de contrato.
 11. \`confirmContractSigned(phone, { observation? })\`: Confirma que o lead assinou o contrato e avança a etapa para \`FECHOU_VENDA\`.
 `;
 
@@ -119,7 +121,6 @@ async function main() {
       aiPrompt: DEFAULT_AI_PROMPT,
       hubsoftBaseUrl: "https://api.ligtop.hubsoft.com.br",
       hubsoftVendedorId: 636,
-      hubsoftVencimentoId: 9,
       hubsoftMotivoContratacaoId: 48,
       hubsoftGruposClienteIds: [4],
       hubsoftGruposServicoIds: [835],

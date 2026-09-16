@@ -197,8 +197,7 @@ export const RegisterContractBodySchema = z.object({
     if (Array.isArray(val)) return val.map((item) => (item != null ? String(item).trim() : "")).filter(Boolean);
     return val;
   }, z.array(z.string()).optional()),
-  dueDateDay: z.unknown().optional(),
-  dueDateId: z.unknown().optional(),
+  dueDateId: z.string().min(1, "dueDateId (ID da data de vencimento) é obrigatório"),
 });
 
 export type RegisterContractInput = z.infer<typeof RegisterContractBodySchema>;
@@ -206,6 +205,7 @@ export type RegisterContractInput = z.infer<typeof RegisterContractBodySchema>;
 export const RegisterContractPJBodySchema = z.object({
   hubsoftToken: z.string().min(1, "hubsoftToken é obrigatório"),
   planId: z.unknown().optional(),
+  dueDateId: z.string().min(1, "dueDateId (ID da data de vencimento) é obrigatório"),
   companyName: z.string().min(1, "Razão social é obrigatória"),
   tradeName: z.unknown().optional(),
   cnpj: z.string().min(1, "CNPJ é obrigatório"),
@@ -225,8 +225,6 @@ export const RegisterContractPJBodySchema = z.object({
     if (Array.isArray(val)) return val.map((item) => (item != null ? String(item).trim() : "")).filter(Boolean);
     return val;
   }, z.array(z.string()).optional()),
-  dueDateDay: z.unknown().optional(),
-  dueDateId: z.unknown().optional(),
 });
 
 export type RegisterContractPJInput = z.infer<typeof RegisterContractPJBodySchema>;

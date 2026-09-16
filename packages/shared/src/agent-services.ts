@@ -506,8 +506,18 @@ export async function registerClientContract(clientId: string, input: RegisterCo
   const plan = await resolvePlan(input.planId);
   const resolvedPackages = await resolveAndValidatePackages(input.packageIds, plan);
   const settings = await getSettings();
-  const resolvedDueDate = await resolveDueDate(input.dueDateDay ?? input.dueDateId);
-  const hubsoftVencimentoId = resolvedDueDate?.hubsoftId ?? settings.hubsoftVencimentoId ?? 9;
+  const resolvedDueDate = await resolveDueDate(input.dueDateId);
+  if (!resolvedDueDate) {
+    throw new Error(
+      `Data de vencimento '${input.dueDateId}' não foi encontrada. Consulte as datas cadastradas através da ferramenta listDueDates().`
+    );
+  }
+  if (!resolvedDueDate.active) {
+    throw new Error(
+      `A data de vencimento do dia ${resolvedDueDate.day} está inativa no momento. Escolha outro dia através de listDueDates().`
+    );
+  }
+  const hubsoftVencimentoId = resolvedDueDate.hubsoftId;
 
   const cleanCpf = input.cpf.replace(/\D/g, "");
   const tipoPessoa = cleanCpf.length === 14 ? "pj" : "pf";
@@ -727,8 +737,18 @@ export async function registerClientContractPJ(
     getSettings(),
     resolvePlan(input.planId),
   ]);
-  const resolvedDueDate = await resolveDueDate(input.dueDateDay ?? input.dueDateId);
-  const hubsoftVencimentoId = resolvedDueDate?.hubsoftId ?? settings.hubsoftVencimentoId ?? 9;
+  const resolvedDueDate = await resolveDueDate(input.dueDateId);
+  if (!resolvedDueDate) {
+    throw new Error(
+      `Data de vencimento '${input.dueDateId}' não foi encontrada. Consulte as datas cadastradas através da ferramenta listDueDates().`
+    );
+  }
+  if (!resolvedDueDate.active) {
+    throw new Error(
+      `A data de vencimento do dia ${resolvedDueDate.day} está inativa no momento. Escolha outro dia através de listDueDates().`
+    );
+  }
+  const hubsoftVencimentoId = resolvedDueDate.hubsoftId;
   const resolvedPackages = await resolveAndValidatePackages(input.packageIds, plan);
 
   const cleanCnpj = input.cnpj.replace(/\D/g, "");

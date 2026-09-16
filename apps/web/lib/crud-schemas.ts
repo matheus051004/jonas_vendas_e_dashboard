@@ -101,7 +101,6 @@ export const SettingsPromptSchema = z.object({
 export const SettingsHubsoftSchema = z.object({
   hubsoftBaseUrl: z.string().url("Informe uma URL válida"),
   hubsoftVendedorId: z.coerce.number().int().positive("Informe um ID válido"),
-  hubsoftVencimentoId: z.coerce.number().int().positive("Informe um ID válido"),
   hubsoftMotivoContratacaoId: z.coerce.number().int().positive("Informe um ID válido"),
   hubsoftGruposClienteIds: z.array(z.coerce.number().int()).default([4]),
   hubsoftGruposServicoIds: z.array(z.coerce.number().int()).default([835]),

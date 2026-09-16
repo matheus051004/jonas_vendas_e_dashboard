@@ -25,7 +25,6 @@ const SettingsUpdateSchema = z.object({
   outboundWebhookSecret: z.string().nullish(),
   hubsoftBaseUrl: z.string().url().optional(),
   hubsoftVendedorId: z.number().int().positive().optional(),
-  hubsoftVencimentoId: z.number().int().positive().optional(),
   hubsoftMotivoContratacaoId: z.number().int().positive().optional(),
   hubsoftGruposClienteIds: z.array(z.number().int()).optional(),
   hubsoftGruposServicoIds: z.array(z.number().int()).optional(),
