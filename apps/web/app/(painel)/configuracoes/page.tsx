@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -761,14 +760,6 @@ export default function ConfiguracoesPage() {
               />
             </Grid>
           </Grid>
-
-          <Alert severity="info" sx={{ mt: 1 }}>
-            Os <strong>dias de vencimento</strong> são gerenciados dinamicamente na tela de{" "}
-            <a href="/vencimentos" style={{ fontWeight: 600, color: "inherit" }}>
-              Vencimentos
-            </a>{" "}
-            e escolhidos pelo cliente junto à IA no momento do fechamento do contrato (via <code>dueDateId</code>).
-          </Alert>
 
           <Stack direction="row" justifyContent="flex-end">
             <Button variant="contained" onClick={() => void handleSaveHubsoft()}>
