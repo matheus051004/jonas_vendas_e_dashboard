@@ -39,6 +39,7 @@ model Client {
   hadBadExperience   Boolean?
   badExperienceNote  String?
   followUpCount      Int       @default(0)
+  followUpPaused     Boolean   @default(false)
   lastInboundAt      DateTime?
   // Metadados opacos enviados pelo chat externo no webhook de entrada (ecoados na saída).
   metadata           Json?
@@ -254,6 +255,10 @@ model Settings {
   contractWebhookUrl       String  @default("")
   // HMAC-SHA256 (header x-webhook-signature) nos webhooks de saída, se preenchido.
   outboundWebhookSecret    String?
+  // Janela de horário permitida para envio de follow-up (horário de São Paulo: America/Sao_Paulo).
+  // Formato "HH:mm" (ex.: "08:00" e "20:00"). Fora da janela, o follow-up é ignorado.
+  followUpStartTime          String? @default("08:00")
+  followUpEndTime            String? @default("20:00")
   // Padrões de integração com Hubsoft
   hubsoftBaseUrl             String  @default("https://api.ligtop.hubsoft.com.br")
   hubsoftVendedorId          Int     @default(636)

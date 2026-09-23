@@ -108,4 +108,19 @@ export const SettingsHubsoftSchema = z.object({
   hubsoftServicoStatusId: z.coerce.number().int().positive("Informe um ID válido"),
 });
 
+const timeFormat = z
+  .union([
+    z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Formato HH:mm (ex: 08:00)"),
+    z.literal(""),
+  ])
+  .nullable()
+  .optional()
+  .transform((val) => (val === "" ? null : val));
+
+export const SettingsFollowUpSchema = z.object({
+  followUpStartTime: timeFormat,
+  followUpEndTime: timeFormat,
+});
+
+
 

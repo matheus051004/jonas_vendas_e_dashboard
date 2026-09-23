@@ -110,6 +110,7 @@ Quando receber um evento de follow-up do sistema, significa que o cliente parou 
 9. \`registerContract(phone, { hubsoftToken, planId, dueDateId, packageIds, fullName, cpf, phonePrimary, phoneSecondary, email, gender, rg, rgEmissor, birthDate, motherName, fatherName, maritalStatus, profession, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Física e gera o cliente/serviço no Hubsoft com tipo_pessoa='pf', id_vencimento (resolvido a partir do dueDateId) e ids_pacotes, e dispara webhook de contrato.
 10. \`registerContractPJ(phone, { hubsoftToken, planId, dueDateId, packageIds, companyName, tradeName, cnpj, stateRegistration, contactName, phonePrimary, phoneSecondary, email, cep, street, number, neighborhood, complement, reference, observation })\`: Salva o contrato de Pessoa Jurídica e gera o cliente/serviço no Hubsoft com tipo_pessoa='pj', id_vencimento (resolvido a partir do dueDateId) e ids_pacotes, e dispara webhook de contrato.
 11. \`confirmContractSigned(phone, { observation? })\`: Confirma que o lead assinou o contrato e avança a etapa para \`FECHOU_VENDA\`.
+12. \`pauseFollowUp(phone)\`: Pausa o envio de follow-up automático para o cliente (útil quando o cliente pedir um tempo para pensar ou pedir para não ser incomodado). O follow-up será normalizado automaticamente assim que o cliente enviar uma nova mensagem.
 `;
 
 async function main() {

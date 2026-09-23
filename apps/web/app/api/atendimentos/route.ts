@@ -33,6 +33,7 @@ export async function GET() {
         origin: c.origin,
         area: c.area,
         followUpCount: c.followUpCount,
+        followUpPaused: c.followUpPaused,
         lastMessage: {
           id: last.id,
           role: last.role,

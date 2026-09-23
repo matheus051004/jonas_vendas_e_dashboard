@@ -81,6 +81,7 @@ interface ConversationSummary {
   origin: { name: string } | null;
   area: { name: string } | null;
   followUpCount?: number;
+  followUpPaused?: boolean;
   lastMessage: ChatMessage;
 }
 
@@ -92,6 +93,7 @@ interface ConversationDetail {
   origin: { name: string } | null;
   area: { name: string } | null;
   followUpCount?: number;
+  followUpPaused?: boolean;
   messages: ChatMessage[];
 }
 
@@ -711,6 +713,15 @@ export default function AtendimentosPage() {
                                     sx={{ height: 20, fontSize: "0.65rem" }}
                                   />
                                 )}
+                                {c.followUpPaused && (
+                                  <Chip
+                                    size="small"
+                                    label="Follow-up pausado"
+                                    color="warning"
+                                    variant="outlined"
+                                    sx={{ height: 20, fontSize: "0.65rem" }}
+                                  />
+                                )}
                               </Stack>
                             </Box>
                           }
@@ -797,6 +808,14 @@ export default function AtendimentosPage() {
                         size="small"
                         label={`Follow-up ${detail.followUpCount}/3`}
                         color="secondary"
+                        variant="outlined"
+                      />
+                    )}
+                    {detail && detail.followUpPaused && (
+                      <Chip
+                        size="small"
+                        label="Follow-up pausado"
+                        color="warning"
                         variant="outlined"
                       />
                     )}

@@ -1488,6 +1488,35 @@ curl -X POST ${inboundUrl} \\
   }
 }`}
           />
+
+          {/* 12. Pausar Follow-up */}
+          <ToolDetailCard
+            title="12. Pausar Follow-up (pauseFollowUp)"
+            method="POST"
+            path="/api/agent/clients/:phone/pause-followup"
+            description="Pausa o envio de follow-up automático para este lead/número. Deve ser chamada pela IA quando o cliente pedir um tempo para pensar, solicitar que não seja incomodado ou quando um follow-up automático não fizer sentido no momento. Caso o cliente envie uma nova mensagem no chat, o follow-up é normalizado automaticamente pelo sistema."
+            fields={[
+              {
+                name: ":phone",
+                type: "string (path)",
+                required: "Sim",
+                description: "Telefone do lead no formato internacional/nacional (ex: 5511999999999)",
+              },
+            ]}
+            curlCode={`curl -X POST \${origin}/api/agent/clients/5511999999999/pause-followup \\
+  -H "x-webhook-token: SEU_AGENT_API_TOKEN"`}
+            responseCode={`{
+  "ok": true,
+  "message": "Follow-up pausado com sucesso.",
+  "client": {
+    "id": "cm7client001",
+    "phone": "5511999999999",
+    "name": "Carlos Eduardo",
+    "stage": "INTERESSADO",
+    "followUpPaused": true
+  }
+}`}
+          />
         </Stack>
       </Section>
 

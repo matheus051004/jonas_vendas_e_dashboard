@@ -11,6 +11,9 @@ import {
   listMessages,
   sendAgentWebhook,
   serializeClientForAgent,
+  getSettings,
+  isWithinFollowUpWindow,
+  addSystemLog,
   type IncomingMessageJob,
   type FollowUpJob,
 } from "@jonas/shared";
@@ -45,9 +48,15 @@ const messagesWorker = new Worker<IncomingMessageJob>(
     );
 
     await cancelFollowUp(phone);
-    const clientUpdateData: { lastInboundAt: Date; followUpCount: number; stage?: SaleStage } = {
+    const clientUpdateData: {
+      lastInboundAt: Date;
+      followUpCount: number;
+      stage?: SaleStage;
+      followUpPaused: boolean;
+    } = {
       lastInboundAt: new Date(),
       followUpCount: 0,
+      followUpPaused: false, // Normaliza o follow-up ao receber nova mensagem do lead
     };
     if (client.stage === SaleStage.PAROU_DE_RESPONDER) {
       clientUpdateData.stage = SaleStage.INTERESSADO;
@@ -56,6 +65,9 @@ const messagesWorker = new Worker<IncomingMessageJob>(
       where: { id: client.id },
       data: clientUpdateData,
     });
+    if (client.followUpPaused) {
+      console.log(`[messages] Follow-up para ${phone} normalizado (mensagem recebida do cliente).`);
+    }
 
     const fresh = await prisma.client.findUniqueOrThrow({ where: { id: client.id } });
     const history = await listMessages(client.id);
@@ -81,7 +93,8 @@ const messagesWorker = new Worker<IncomingMessageJob>(
     if (
       updated.stage !== SaleStage.FECHOU_VENDA &&
       updated.stage !== SaleStage.DESISTIU &&
-      updated.stage !== SaleStage.ACHOU_CARO
+      updated.stage !== SaleStage.ACHOU_CARO &&
+      !updated.followUpPaused
     ) {
       await scheduleFollowUp(phone, 1);
     }
@@ -98,8 +111,27 @@ const followUpsWorker = new Worker<FollowUpJob>(
     if (
       client.stage === SaleStage.FECHOU_VENDA ||
       client.stage === SaleStage.DESISTIU ||
-      client.stage === SaleStage.ACHOU_CARO
+      client.stage === SaleStage.ACHOU_CARO ||
+      client.followUpPaused
     ) {
+      if (client.followUpPaused) {
+        console.log(`[followups] Follow-up para ${phone} ignorado: pausado.`);
+      }
+      return;
+    }
+
+    const settings = await getSettings();
+    if (!isWithinFollowUpWindow(new Date(), settings.followUpStartTime, settings.followUpEndTime)) {
+      console.log(
+        `[followups] Follow-up para ${phone} ignorado: fora da janela permitida (${settings.followUpStartTime ?? "08:00"} às ${settings.followUpEndTime ?? "20:00"} SP).`
+      );
+      await addSystemLog({
+        level: "info",
+        source: "worker",
+        message: `Follow-up para ${phone} ignorado: fora da janela permitida (${settings.followUpStartTime ?? "08:00"} às ${settings.followUpEndTime ?? "20:00"} SP).`,
+        phone,
+        details: { attempt, stage: client.stage },
+      });
       return;
     }
 

@@ -6,6 +6,12 @@ const emptyOrUrl = z.union([z.string().url(), z.literal("")]);
 
 const hexColor = z.string().regex(/^#([0-9A-Fa-f]{6})$/);
 
+const timeFormat = z
+  .union([z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Formato HH:mm (ex: 08:00)"), z.literal("")])
+  .nullable()
+  .optional()
+  .transform((val) => (val === "" ? null : val));
+
 // Logo data URL: limite ~750 KB de base64 (~500 KB de arquivo) para não estourar o body/JSON.
 const brandLogo = z
   .string()
@@ -23,6 +29,8 @@ const SettingsUpdateSchema = z.object({
   outboundWebhookUrl: emptyOrUrl.optional(),
   contractWebhookUrl: emptyOrUrl.optional(),
   outboundWebhookSecret: z.string().nullish(),
+  followUpStartTime: timeFormat,
+  followUpEndTime: timeFormat,
   hubsoftBaseUrl: z.string().url().optional(),
   hubsoftVendedorId: z.number().int().positive().optional(),
   hubsoftMotivoContratacaoId: z.number().int().positive().optional(),

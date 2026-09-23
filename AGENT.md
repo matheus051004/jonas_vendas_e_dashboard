@@ -92,12 +92,13 @@ Auth: `x-webhook-token` = `AGENT_API_TOKEN` (fallback `INBOUND_WEBHOOK_TOKEN`). 
 | GET | `/api/agent/areas` | listAreas |
 | GET | `/api/agent/areas/:areaId/plans` | listPlansByArea |
 | GET | `/api/agent/plans/:planId` | getPlanDetails (detalhes completos do plano + imageUrl) |
+| POST | `/api/agent/clients/:phone/pause-followup` | pauseFollowUp (pausa follow-up do lead até que ele mande nova mensagem) |
 
 Serviços em `packages/shared/src/agent-services.ts`.
 
 ### Settings
 
-Linha única `Settings` (`id = "default"`): branding + `aiPrompt` + `agentWebhookUrl`, `outboundWebhookUrl`, `contractWebhookUrl`, `outboundWebhookSecret`. Cache 30s em `packages/shared/src/settings.ts`.
+Linha única `Settings` (`id = "default"`): branding + `aiPrompt` + `agentWebhookUrl`, `outboundWebhookUrl`, `contractWebhookUrl`, `outboundWebhookSecret` + `followUpStartTime`/`followUpEndTime` (janela de follow-up em horário de SP). Cache 30s em `packages/shared/src/settings.ts`.
 
 ### Autenticação do painel
 

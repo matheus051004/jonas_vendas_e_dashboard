@@ -16,7 +16,13 @@ import {
   Typography,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import { SettingsBrandingSchema, SettingsWebhooksSchema, SettingsPromptSchema, SettingsHubsoftSchema } from "@/lib/crud-schemas";
+import {
+  SettingsBrandingSchema,
+  SettingsWebhooksSchema,
+  SettingsPromptSchema,
+  SettingsHubsoftSchema,
+  SettingsFollowUpSchema,
+} from "@/lib/crud-schemas";
 import { firstFieldError, submitJson, zodFieldErrors, type FieldErrors } from "@/lib/form-errors";
 import { ColorPickerField } from "@/lib/color-picker-field";
 import { useBranding, type Branding } from "@/lib/branding";
@@ -35,6 +41,8 @@ interface Settings {
   outboundWebhookUrl: string;
   contractWebhookUrl: string;
   outboundWebhookSecret: string | null;
+  followUpStartTime: string | null;
+  followUpEndTime: string | null;
   hubsoftBaseUrl: string;
   hubsoftVendedorId: number;
   hubsoftMotivoContratacaoId: number;
@@ -53,6 +61,8 @@ const BRANDING_FIELDS: (keyof Settings)[] = [
 ];
 
 const PROMPT_FIELDS: (keyof Settings)[] = ["aiPrompt"];
+
+const FOLLOWUP_FIELDS: (keyof Settings)[] = ["followUpStartTime", "followUpEndTime"];
 
 const WEBHOOK_FIELDS: (keyof Settings)[] = [
   "agentWebhookUrl",
@@ -171,6 +181,8 @@ export default function ConfiguracoesPage() {
           outboundWebhookUrl: data.outboundWebhookUrl ?? "",
           contractWebhookUrl: data.contractWebhookUrl ?? "",
           outboundWebhookSecret: data.outboundWebhookSecret ?? null,
+          followUpStartTime: data.followUpStartTime ?? "",
+          followUpEndTime: data.followUpEndTime ?? "",
           hubsoftBaseUrl: data.hubsoftBaseUrl || "https://api.ligtop.hubsoft.com.br",
           hubsoftVendedorId: data.hubsoftVendedorId ?? 636,
           hubsoftMotivoContratacaoId: data.hubsoftMotivoContratacaoId ?? 48,
@@ -258,6 +270,24 @@ export default function ConfiguracoesPage() {
     setSnackbar({
       open: true,
       message: result.ok ? "Prompt da IA salvo com sucesso" : `Erro ao salvar prompt — ${result.message}`,
+    });
+  }
+
+  async function handleSaveFollowUp() {
+    setFieldErrors({});
+    const payload = sliceFields(FOLLOWUP_FIELDS);
+    const parsed = SettingsFollowUpSchema.safeParse(payload);
+    if (!parsed.success) {
+      const errors = zodFieldErrors(parsed.error);
+      setFieldErrors(errors);
+      setSnackbar({ open: true, message: firstFieldError(errors) ?? "Verifique os horários de follow-up." });
+      return;
+    }
+
+    const result = await patch(parsed.data);
+    setSnackbar({
+      open: true,
+      message: result.ok ? "Regras de follow-up salvas com sucesso" : `Erro ao salvar follow-up — ${result.message}`,
     });
   }
 
@@ -576,6 +606,50 @@ export default function ConfiguracoesPage() {
           <Stack direction="row" justifyContent="flex-end">
             <Button variant="contained" onClick={() => void handleSavePrompt()}>
               Salvar prompt
+            </Button>
+          </Stack>
+        </SectionCard>
+
+        <SectionCard
+          title="Janela de Follow-up"
+          description="Configure o intervalo de horário permitido para envio de follow-up automático aos leads (horário de São Paulo). Fora desta janela, os disparos são ignorados."
+        >
+          <Grid container spacing={3}>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                label="Horário de início (SP)"
+                type="time"
+                fullWidth
+                value={form.followUpStartTime ?? ""}
+                error={!!fieldErrors.followUpStartTime}
+                helperText={fieldErrors.followUpStartTime ?? "Início da janela para disparo (ex.: 08:00)"}
+                onChange={(e) => setForm({ ...form, followUpStartTime: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 300 }}
+              />
+            </Grid>
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <TextField
+                label="Horário de término (SP)"
+                type="time"
+                fullWidth
+                value={form.followUpEndTime ?? ""}
+                error={!!fieldErrors.followUpEndTime}
+                helperText={fieldErrors.followUpEndTime ?? "Fim da janela para disparo (ex.: 20:00)"}
+                onChange={(e) => setForm({ ...form, followUpEndTime: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ step: 300 }}
+              />
+            </Grid>
+          </Grid>
+
+          <Typography variant="body2" color="text.secondary">
+            Respeitando o horário oficial de Brasília/São Paulo (America/Sao_Paulo). Se a fila de follow-up rodar fora dessa janela, o disparo é ignorado e não perturba o lead. Deixe em branco caso deseje desativar a restrição de horário.
+          </Typography>
+
+          <Stack direction="row" justifyContent="flex-end">
+            <Button variant="contained" onClick={() => void handleSaveFollowUp()}>
+              Salvar janela de follow-up
             </Button>
           </Stack>
         </SectionCard>

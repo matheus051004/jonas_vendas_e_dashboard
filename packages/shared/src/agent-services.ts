@@ -5,6 +5,7 @@ import { listMessages } from "./messages";
 import { scheduleFollowUp, cancelFollowUp } from "./queue";
 import { getSettings } from "./settings";
 import { addSystemLog } from "./logger";
+import { findClientByPhone } from "./clients";
 
 export class HubsoftApiError extends Error {
   constructor(
@@ -982,6 +983,7 @@ export function serializeClientForAgent(client: {
   hadBadExperience: boolean | null;
   badExperienceNote: string | null;
   followUpCount: number;
+  followUpPaused?: boolean;
   lastInboundAt: Date | null;
   metadata: unknown;
   createdAt: Date;
@@ -999,10 +1001,44 @@ export function serializeClientForAgent(client: {
     hadBadExperience: client.hadBadExperience,
     badExperienceNote: client.badExperienceNote,
     followUpCount: client.followUpCount,
+    followUpPaused: client.followUpPaused ?? false,
     lastInboundAt: client.lastInboundAt?.toISOString() ?? null,
     metadata: asWebhookMetadata(client.metadata) ?? null,
     createdAt: client.createdAt.toISOString(),
     updatedAt: client.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Pausa o follow-up automático para o lead/número informado.
+ * Cancela qualquer agendamento pendente na fila.
+ * Se o lead enviar nova mensagem, o follow-up é normalizado automaticamente.
+ */
+export async function pauseFollowUp(phone: string) {
+  const client = await findClientByPhone(phone);
+  if (!client) {
+    throw new Error(`Cliente não encontrado para o telefone: ${phone}`);
+  }
+
+  await cancelFollowUp(client.phone);
+
+  const updated = await prisma.client.update({
+    where: { id: client.id },
+    data: { followUpPaused: true },
+  });
+
+  await addSystemLog({
+    level: "info",
+    source: "agent",
+    message: `Follow-up pausado pela IA para o cliente ${client.phone}.`,
+    phone: client.phone,
+    details: { clientId: client.id },
+  });
+
+  return {
+    ok: true,
+    message: "Follow-up pausado com sucesso.",
+    client: serializeClientForAgent(updated),
   };
 }
 
@@ -1027,6 +1063,10 @@ export async function triggerFollowUp(
 
   if (client.stage === SaleStage.FECHOU_VENDA) {
     throw new Error("Não é possível enviar follow-up para cliente que já fechou a venda.");
+  }
+
+  if (client.followUpPaused) {
+    throw new Error("Não é possível enviar follow-up: o follow-up deste cliente está pausado.");
   }
 
   const attempt: 1 | 2 | 3 =

@@ -38,6 +38,7 @@ export async function GET(
     origin: client.origin,
     area: client.area,
     followUpCount: client.followUpCount,
+    followUpPaused: client.followUpPaused,
     messages: client.messages.map((m) => ({
       id: m.id,
       role: m.role,
