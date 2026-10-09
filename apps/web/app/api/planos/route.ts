@@ -11,6 +11,7 @@ const PlanSchema = z.object({
   hubsoftServiceId: z.number().int().positive().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
   active: z.boolean().optional(),
+  paymentMethodId: z.string().nullable().optional(),
   areaIds: z.array(z.string()).default([]),
   packageIds: z.array(z.string()).default([]),
   promotionIds: z.array(z.string()).default([]),
@@ -23,6 +24,7 @@ export async function GET() {
       areas: { include: { area: true } },
       packages: { include: { package: true } },
       promotions: { include: { promotion: true } },
+      paymentMethod: true,
     },
   });
   return NextResponse.json(plans);
@@ -33,10 +35,11 @@ export async function POST(req: NextRequest) {
   const parsed = PlanSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const { areaIds, packageIds = [], promotionIds = [], ...data } = parsed.data;
+  const { areaIds, packageIds = [], promotionIds = [], paymentMethodId, ...data } = parsed.data;
   const plan = await prisma.plan.create({
     data: {
       ...data,
+      paymentMethodId: paymentMethodId || null,
       areas: { create: areaIds.map((areaId) => ({ areaId })) },
       packages: { create: packageIds.map((packageId) => ({ packageId })) },
       promotions: { create: promotionIds.map((promotionId) => ({ promotionId })) },
@@ -45,6 +48,7 @@ export async function POST(req: NextRequest) {
       areas: { include: { area: true } },
       packages: { include: { package: true } },
       promotions: { include: { promotion: true } },
+      paymentMethod: true,
     },
   });
   return NextResponse.json(plan, { status: 201 });

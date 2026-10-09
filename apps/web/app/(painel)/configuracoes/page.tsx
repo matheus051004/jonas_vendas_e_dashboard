@@ -48,7 +48,6 @@ interface Settings {
   hubsoftMotivoContratacaoId: number;
   hubsoftGruposClienteIds: number[];
   hubsoftGruposServicoIds: number[];
-  hubsoftFormaCobrancaId: number;
   hubsoftServicoStatusId: number;
 }
 
@@ -77,7 +76,6 @@ const HUBSOFT_FIELDS: (keyof Settings)[] = [
   "hubsoftMotivoContratacaoId",
   "hubsoftGruposClienteIds",
   "hubsoftGruposServicoIds",
-  "hubsoftFormaCobrancaId",
   "hubsoftServicoStatusId",
 ];
 
@@ -188,7 +186,6 @@ export default function ConfiguracoesPage() {
           hubsoftMotivoContratacaoId: data.hubsoftMotivoContratacaoId ?? 48,
           hubsoftGruposClienteIds: data.hubsoftGruposClienteIds?.length ? data.hubsoftGruposClienteIds : [4],
           hubsoftGruposServicoIds: data.hubsoftGruposServicoIds?.length ? data.hubsoftGruposServicoIds : [835],
-          hubsoftFormaCobrancaId: data.hubsoftFormaCobrancaId ?? 94,
           hubsoftServicoStatusId: data.hubsoftServicoStatusId ?? 6,
         });
       });
@@ -794,17 +791,6 @@ export default function ConfiguracoesPage() {
                 error={!!fieldErrors.hubsoftServicoStatusId}
                 helperText={fieldErrors.hubsoftServicoStatusId ?? "Padrão: 6"}
                 onChange={(e) => setForm({ ...form, hubsoftServicoStatusId: Number(e.target.value) })}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-              <TextField
-                label="ID Forma de Cobrança"
-                type="number"
-                fullWidth
-                value={form.hubsoftFormaCobrancaId}
-                error={!!fieldErrors.hubsoftFormaCobrancaId}
-                helperText={fieldErrors.hubsoftFormaCobrancaId ?? "Padrão: 94"}
-                onChange={(e) => setForm({ ...form, hubsoftFormaCobrancaId: Number(e.target.value) })}
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 6, md: 4 }}>

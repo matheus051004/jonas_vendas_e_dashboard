@@ -125,8 +125,19 @@ async function main() {
       hubsoftMotivoContratacaoId: 48,
       hubsoftGruposClienteIds: [4],
       hubsoftGruposServicoIds: [835],
-      hubsoftFormaCobrancaId: 94,
       hubsoftServicoStatusId: 6,
+    },
+  });
+
+  const paymentMethod = await prisma.paymentMethod.upsert({
+    where: { id: "seed-forma-carne" },
+    update: { hubsoftId: 94 },
+    create: {
+      id: "seed-forma-carne",
+      name: "Carnê",
+      description: "Forma de pagamento padrão via carnê",
+      hubsoftId: 94,
+      active: true,
     },
   });
 
@@ -143,7 +154,7 @@ async function main() {
 
   const plan = await prisma.plan.upsert({
     where: { id: "seed-plan-300" },
-    update: { hubsoftServiceId: 947, priceWithLoyalty: 69.9 },
+    update: { hubsoftServiceId: 947, priceWithLoyalty: 69.9, paymentMethodId: paymentMethod.id },
     create: {
       id: "seed-plan-300",
       name: "Internet 300 Mega",
@@ -152,6 +163,7 @@ async function main() {
       loyaltyMonths: 12,
       description: "300 Mega de download, Wi-Fi 6 incluso, instalação grátis.",
       hubsoftServiceId: 947,
+      paymentMethodId: paymentMethod.id,
     },
   });
 

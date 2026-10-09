@@ -23,6 +23,7 @@ import WifiIcon from "@mui/icons-material/Wifi";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
+import PaymentIcon from "@mui/icons-material/Payment";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -44,6 +45,7 @@ const NAV_ITEMS = [
   { href: "/pacotes", label: "Pacotes", icon: <Inventory2Icon /> },
   { href: "/promocoes", label: "Promoções", icon: <LocalOfferIcon /> },
   { href: "/vencimentos", label: "Vencimentos", icon: <CalendarMonthIcon /> },
+  { href: "/formas-pagamento", label: "Formas de Pagamento", icon: <PaymentIcon /> },
   { href: "/areas", label: "Áreas", icon: <LocationOnIcon /> },
   { href: "/origens", label: "Origens", icon: <CampaignIcon /> },
   { href: "/configuracoes", label: "Configurações", icon: <SettingsIcon /> },

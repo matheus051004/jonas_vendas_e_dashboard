@@ -70,6 +70,9 @@ model Plan {
   active           Boolean  @default(true)
   createdAt        DateTime @default(now())
 
+  paymentMethodId  String?
+  paymentMethod    PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+
   areas      AreaPlan[]
   contracts  Contract[]
   packages   PlanPackage[]
@@ -128,6 +131,20 @@ model PlanPromotion {
   promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
 
   @@id([planId, promotionId])
+}
+
+model PaymentMethod {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  hubsoftId   Int
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  plans       Plan[]
+
+  @@index([hubsoftId])
 }
 
 // Área informal de cobertura (setor, distrito, bairro, etc. — sem padrão fixo).
@@ -265,7 +282,6 @@ model Settings {
   hubsoftMotivoContratacaoId Int     @default(48)
   hubsoftGruposClienteIds    Int[]   @default([4])
   hubsoftGruposServicoIds    Int[]   @default([835])
-  hubsoftFormaCobrancaId     Int     @default(94)
   hubsoftServicoStatusId     Int     @default(6)
 }
 

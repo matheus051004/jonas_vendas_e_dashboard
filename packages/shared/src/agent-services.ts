@@ -125,7 +125,12 @@ export function cleanBoolean(val: unknown): boolean | null {
   return null;
 }
 
-export async function resolvePlan<T extends Prisma.PlanInclude = { promotions: { include: { promotion: true } } }>(
+export async function resolvePlan<
+  T extends Prisma.PlanInclude = {
+    promotions: { include: { promotion: true } };
+    paymentMethod: true;
+  }
+>(
   rawPlanId: unknown,
   include?: T
 ): Promise<Prisma.PlanGetPayload<{ include: T }> | null> {
@@ -140,6 +145,7 @@ export async function resolvePlan<T extends Prisma.PlanInclude = { promotions: {
     promotions: {
       include: { promotion: true },
     },
+    paymentMethod: true,
   }) as T;
 
   // 1. Por ID CUID
@@ -443,6 +449,7 @@ export async function getPlanDetails(rawPlanId: unknown, baseUrl?: string) {
     areas: { include: { area: true } },
     packages: { include: { package: true } },
     promotions: { include: { promotion: true } },
+    paymentMethod: true,
   });
 
   if (!plan) return null;
@@ -467,6 +474,14 @@ export async function getPlanDetails(rawPlanId: unknown, baseUrl?: string) {
     hubsoftServiceId: plan.hubsoftServiceId,
     active: plan.active,
     imageUrl,
+    paymentMethod: plan.paymentMethod
+      ? {
+          id: plan.paymentMethod.id,
+          name: plan.paymentMethod.name,
+          description: plan.paymentMethod.description,
+          hubsoftId: plan.paymentMethod.hubsoftId,
+        }
+      : null,
     areas: plan.areas.map((ap) => ({
       id: ap.area.id,
       name: ap.area.name,
@@ -594,8 +609,8 @@ export async function registerClientContract(clientId: string, input: RegisterCo
     ids_grupos_cliente_servico: settings.hubsoftGruposServicoIds?.length
       ? settings.hubsoftGruposServicoIds
       : [835],
-    id_forma_cobranca: settings.hubsoftFormaCobrancaId ?? 94,
-    carne: false,
+    id_forma_cobranca: plan?.paymentMethod?.hubsoftId ?? 94,
+    carne: true,
     tipo_cobranca: "postecipada",
     emite_contrato: false,
     gerar_carne: "nao_gerar_carne",
@@ -813,8 +828,8 @@ export async function registerClientContractPJ(
     ids_grupos_cliente_servico: settings.hubsoftGruposServicoIds?.length
       ? settings.hubsoftGruposServicoIds
       : [835],
-    id_forma_cobranca: settings.hubsoftFormaCobrancaId ?? 94,
-    carne: false,
+    id_forma_cobranca: plan?.paymentMethod?.hubsoftId ?? 94,
+    carne: true,
     tipo_cobranca: "postecipada",
     emite_contrato: false,
     gerar_carne: "nao_gerar_carne",

@@ -36,7 +36,6 @@ const SettingsUpdateSchema = z.object({
   hubsoftMotivoContratacaoId: z.number().int().positive().optional(),
   hubsoftGruposClienteIds: z.array(z.number().int()).optional(),
   hubsoftGruposServicoIds: z.array(z.number().int()).optional(),
-  hubsoftFormaCobrancaId: z.number().int().positive().optional(),
   hubsoftServicoStatusId: z.number().int().positive().optional(),
 });
 

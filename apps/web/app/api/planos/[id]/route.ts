@@ -11,6 +11,7 @@ const PlanUpdateSchema = z.object({
   hubsoftServiceId: z.number().int().positive().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
   active: z.boolean().optional(),
+  paymentMethodId: z.string().nullable().optional(),
   areaIds: z.array(z.string()).optional(),
   packageIds: z.array(z.string()).optional(),
   promotionIds: z.array(z.string()).optional(),
@@ -22,7 +23,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const parsed = PlanUpdateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const { areaIds, packageIds, promotionIds, ...data } = parsed.data;
+  const { areaIds, packageIds, promotionIds, paymentMethodId, ...restData } = parsed.data;
+  const data = {
+    ...restData,
+    ...(paymentMethodId !== undefined ? { paymentMethodId: paymentMethodId || null } : {}),
+  };
   const plan = await prisma.$transaction(async (tx) => {
     if (areaIds) {
       await tx.areaPlan.deleteMany({ where: { planId: id } });
@@ -43,6 +48,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         areas: { include: { area: true } },
         packages: { include: { package: true } },
         promotions: { include: { promotion: true } },
+        paymentMethod: true,
       },
     });
   });

@@ -30,4 +30,5 @@ export type {
   AreaPlan,
   Upload,
   DueDate,
+  PaymentMethod,
 } from "@prisma/client";

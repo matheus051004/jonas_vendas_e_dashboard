@@ -53,6 +53,13 @@ interface PromotionOption {
   hubsoftPromotionId?: number | null;
 }
 
+interface PaymentMethodOption {
+  id: string;
+  name: string;
+  hubsoftId: number;
+  active: boolean;
+}
+
 interface Plan {
   id: string;
   name: string;
@@ -63,6 +70,8 @@ interface Plan {
   hubsoftServiceId?: number | null;
   imageUrl?: string | null;
   active: boolean;
+  paymentMethodId?: string | null;
+  paymentMethod?: { id: string; name: string; hubsoftId: number } | null;
   areas: { area: Area }[];
   packages: { package: PackageOption }[];
   promotions?: { promotion: PromotionOption }[];
@@ -77,6 +86,7 @@ const EMPTY_FORM = {
   hubsoftServiceId: "",
   imageUrl: "",
   active: true,
+  paymentMethodId: "",
   areaIds: [] as string[],
   packageIds: [] as string[],
   promotionIds: [] as string[],
@@ -87,6 +97,7 @@ export default function PlanosPage() {
   const [areas, setAreas] = React.useState<Area[]>([]);
   const [availablePackages, setAvailablePackages] = React.useState<PackageOption[]>([]);
   const [availablePromotions, setAvailablePromotions] = React.useState<PromotionOption[]>([]);
+  const [availablePaymentMethods, setAvailablePaymentMethods] = React.useState<PaymentMethodOption[]>([]);
   const [open, setOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<Plan | null>(null);
@@ -104,6 +115,11 @@ export default function PlanosPage() {
     fetch("/api/areas").then((r) => r.json()).then(setAreas);
     fetch("/api/pacotes").then((r) => r.json()).then(setAvailablePackages);
     fetch("/api/promocoes").then((r) => r.json()).then(setAvailablePromotions);
+    fetch("/api/formas-pagamento")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setAvailablePaymentMethods(data);
+      });
   }, []);
 
   React.useEffect(() => load(), [load]);
@@ -133,6 +149,7 @@ export default function PlanosPage() {
       hubsoftServiceId: plan.hubsoftServiceId ? String(plan.hubsoftServiceId) : "",
       imageUrl: plan.imageUrl ?? "",
       active: plan.active,
+      paymentMethodId: plan.paymentMethodId ?? plan.paymentMethod?.id ?? "",
       areaIds: plan.areas.map((a) => a.area.id),
       packageIds: plan.packages ? plan.packages.map((p) => p.package.id) : [],
       promotionIds: plan.promotions ? plan.promotions.map((p) => p.promotion.id) : [],
@@ -187,6 +204,7 @@ export default function PlanosPage() {
       hubsoftServiceId: form.hubsoftServiceId ? Number(form.hubsoftServiceId) : null,
       imageUrl: form.imageUrl.trim() || null,
       active: form.active,
+      paymentMethodId: form.paymentMethodId || null,
       areaIds: form.areaIds,
       packageIds: form.packageIds,
       promotionIds: form.promotionIds,
@@ -236,6 +254,7 @@ export default function PlanosPage() {
         hubsoftServiceId: plan.hubsoftServiceId ?? null,
         imageUrl: plan.imageUrl ?? null,
         active: plan.active,
+        paymentMethodId: plan.paymentMethodId ?? plan.paymentMethod?.id ?? null,
         areaIds: plan.areas.map((a) => a.area.id),
         packageIds: plan.packages ? plan.packages.map((p) => p.package.id) : [],
         promotionIds: plan.promotions ? plan.promotions.map((p) => p.promotion.id) : [],
@@ -322,6 +341,13 @@ export default function PlanosPage() {
       headerName: "Promoções",
       flex: 1.2,
       valueGetter: (_v, row) => row.promotions?.map((p) => p.promotion.name).join(", ") || "-",
+    },
+    {
+      field: "paymentMethod",
+      headerName: "Forma de Pagamento",
+      flex: 1.1,
+      valueGetter: (_v, row) =>
+        row.paymentMethod ? `${row.paymentMethod.name} (${row.paymentMethod.hubsoftId})` : "-",
     },
     { field: "active", headerName: "Ativo", flex: 0.6, valueGetter: (_v, row) => (row.active ? "Sim" : "Não") },
     {
@@ -571,6 +597,24 @@ export default function PlanosPage() {
               {availablePromotions.map((promo) => (
                 <MenuItem key={promo.id} value={promo.id}>
                   {promo.name} {promo.hubsoftPromotionId ? `(ID: ${promo.hubsoftPromotionId})` : ""}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl fullWidth margin="normal">
+            <InputLabel id="plan-payment-method-label">Forma de Pagamento</InputLabel>
+            <Select
+              labelId="plan-payment-method-label"
+              value={form.paymentMethodId}
+              onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })}
+              label="Forma de Pagamento"
+            >
+              <MenuItem value="">
+                <em>Nenhuma (padrão)</em>
+              </MenuItem>
+              {availablePaymentMethods.map((pm) => (
+                <MenuItem key={pm.id} value={pm.id}>
+                  {pm.name} (Hubsoft ID: {pm.hubsoftId}) {!pm.active ? "— (Inativa)" : ""}
                 </MenuItem>
               ))}
             </Select>

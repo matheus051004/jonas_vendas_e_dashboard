@@ -14,6 +14,7 @@ export const PlanFormSchema = z.object({
   hubsoftServiceId: z.coerce.number().int().positive().nullable().optional(),
   imageUrl: z.string().nullable().optional(),
   active: z.boolean(),
+  paymentMethodId: z.string().nullable().optional(),
   areaIds: z.array(z.string()).default([]),
   packageIds: z.array(z.string()).default([]),
   promotionIds: z.array(z.string()).default([]),
@@ -55,6 +56,16 @@ export const DueDateFormSchema = z.object({
     .int("O dia deve ser um número inteiro")
     .min(1, "O dia deve ser entre 1 e 31")
     .max(31, "O dia deve ser entre 1 e 31"),
+  hubsoftId: z.coerce
+    .number({ invalid_type_error: "Informe o ID do Hubsoft" })
+    .int("O ID do Hubsoft deve ser um número inteiro")
+    .positive("O ID do Hubsoft deve ser maior que zero"),
+  active: z.boolean().default(true),
+});
+
+export const PaymentMethodFormSchema = z.object({
+  name: required("o nome"),
+  description: z.string().optional().default(""),
   hubsoftId: z.coerce
     .number({ invalid_type_error: "Informe o ID do Hubsoft" })
     .int("O ID do Hubsoft deve ser um número inteiro")
@@ -104,7 +115,6 @@ export const SettingsHubsoftSchema = z.object({
   hubsoftMotivoContratacaoId: z.coerce.number().int().positive("Informe um ID válido"),
   hubsoftGruposClienteIds: z.array(z.coerce.number().int()).default([4]),
   hubsoftGruposServicoIds: z.array(z.coerce.number().int()).default([835]),
-  hubsoftFormaCobrancaId: z.coerce.number().int().positive("Informe um ID válido"),
   hubsoftServicoStatusId: z.coerce.number().int().positive("Informe um ID válido"),
 });
 
