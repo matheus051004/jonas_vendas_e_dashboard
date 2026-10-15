@@ -4,6 +4,7 @@ import type {
   AgentWebhookPayload,
   ContractWebhookPayload,
   OutboundMessagePayload,
+  ProspectingOutboundPayload,
 } from "./types";
 
 async function postJson(url: string, secret: string | null | undefined, body: unknown) {
@@ -39,4 +40,14 @@ export async function sendAgentWebhook(payload: AgentWebhookPayload) {
     );
   }
   await postJson(settings.agentWebhookUrl, settings.outboundWebhookSecret, payload);
+}
+
+export async function sendProspectingWebhook(payload: ProspectingOutboundPayload) {
+  const settings = await getSettings();
+  if (!settings.prospectingWebhookUrl) {
+    throw new Error(
+      "prospectingWebhookUrl não configurado em Settings — configure a URL do webhook de prospecção"
+    );
+  }
+  await postJson(settings.prospectingWebhookUrl, settings.outboundWebhookSecret, payload);
 }

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { SaleStage } from "@jonas/db";
+import { SaleStage, ProspectStatus } from "@jonas/db";
 
-export { SaleStage };
+export { SaleStage, ProspectStatus };
 
 /** Objeto livre de metadados opacos do chat externo (ecoados nos webhooks). */
 export const MetadataSchema = z.record(z.string(), z.unknown());
@@ -243,4 +243,43 @@ export const DueDateSchema = z.object({
 });
 
 export type DueDateInput = z.infer<typeof DueDateSchema>;
+
+// Prospecção de Leads
+export interface ProspectingCallJob {
+  leadId: string;
+}
+
+export const ProspectingCallbackSchema = z.object({
+  phone: z.string().min(1, "Telefone é obrigatório"),
+  answered: z.boolean({ required_error: "answered (booleano) é obrigatório" }),
+});
+
+export type ProspectingCallbackPayload = z.infer<typeof ProspectingCallbackSchema>;
+
+export interface ProspectingOutboundPayload {
+  leadId: string;
+  clientId: string;
+  phone: string;
+  name: string;
+  action: "VOICE" | "TEXT";
+  metadata?: Record<string, unknown>;
+}
+
+export const ProspectLeadSchema = z.object({
+  name: z.string().min(1, "Nome é obrigatório"),
+  phone: z.string().min(1, "Telefone é obrigatório"),
+  secondaryPhone: z.string().optional().nullable(),
+  email: z.string().optional().nullable(),
+  rawDocument: z.string().optional().nullable(),
+  street: z.string().optional().nullable(),
+  number: z.string().optional().nullable(),
+  complement: z.string().optional().nullable(),
+  neighborhood: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  cep: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+export type ProspectLeadInput = z.infer<typeof ProspectLeadSchema>;
 

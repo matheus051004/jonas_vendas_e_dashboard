@@ -81,6 +81,16 @@ export async function getAiPrompt(): Promise<string> {
   return settings.aiPrompt ?? "";
 }
 
+export async function getVoiceAiPrompt(): Promise<string> {
+  const settings = await getSettings();
+  return settings.voiceAiPrompt ?? "";
+}
+
+export async function getTextAiPrompt(): Promise<string> {
+  const settings = await getSettings();
+  return settings.textAiPrompt ?? "";
+}
+
 export type UpdateClientInput = {
   name?: unknown;
   areaId?: unknown;

@@ -8,3 +8,4 @@ export * from "./agent-services";
 export * from "./agent-auth";
 export * from "./webhooks";
 export * from "./logger";
+export * from "./prospect-services";

@@ -30,6 +30,7 @@ import SettingsIcon from "@mui/icons-material/Settings";
 import MenuBookIcon from "@mui/icons-material/MenuBook";
 import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import LogoutIcon from "@mui/icons-material/Logout";
+import PhoneInTalkIcon from "@mui/icons-material/PhoneInTalk";
 import MenuIcon from "@mui/icons-material/Menu";
 import { logoutAction } from "@/lib/logout-action";
 import { useBranding } from "@/lib/branding";
@@ -40,6 +41,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: <DashboardIcon /> },
   { href: "/kanban", label: "Kanban", icon: <ViewKanbanIcon /> },
   { href: "/atendimentos", label: "Atendimentos", icon: <ChatIcon /> },
+  { href: "/prospeccao", label: "Prospecção", icon: <PhoneInTalkIcon /> },
   { href: "/clientes", label: "Clientes", icon: <PeopleIcon /> },
   { href: "/planos", label: "Planos", icon: <WifiIcon /> },
   { href: "/pacotes", label: "Pacotes", icon: <Inventory2Icon /> },

@@ -1,15 +1,22 @@
 import { Queue } from "bullmq";
 import IORedis from "ioredis";
-import type { IncomingMessageJob, FollowUpJob } from "./types";
+import type { IncomingMessageJob, FollowUpJob, ProspectingCallJob } from "./types";
 
 // ponytail: uma conexão Redis compartilhada por processo; troque por pool se o volume exigir.
 export const redisConnection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
   maxRetriesPerRequest: null,
 });
 
+export function createRedisClient() {
+  return new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
+    maxRetriesPerRequest: null,
+  });
+}
+
 export const QUEUE_NAMES = {
   messages: "messages",
   followups: "followups",
+  prospecting: "prospecting",
 } as const;
 
 export const messagesQueue = new Queue<IncomingMessageJob>(QUEUE_NAMES.messages, {
@@ -17,6 +24,10 @@ export const messagesQueue = new Queue<IncomingMessageJob>(QUEUE_NAMES.messages,
 });
 
 export const followUpsQueue = new Queue<FollowUpJob>(QUEUE_NAMES.followups, {
+  connection: redisConnection,
+});
+
+export const prospectingQueue = new Queue<ProspectingCallJob>(QUEUE_NAMES.prospecting, {
   connection: redisConnection,
 });
 

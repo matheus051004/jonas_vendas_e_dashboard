@@ -15,6 +15,7 @@ export {
   Prisma,
   PrismaClient,
   SaleStage,
+  ProspectStatus,
   MessageRole,
   MessageKind,
 } from "@prisma/client";
@@ -31,4 +32,5 @@ export type {
   Upload,
   DueDate,
   PaymentMethod,
+  ProspectLead,
 } from "@prisma/client";

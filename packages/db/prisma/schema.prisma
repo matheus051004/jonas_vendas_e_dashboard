@@ -16,6 +16,15 @@ enum SaleStage {
   DESISTIU
 }
 
+enum ProspectStatus {
+  PENDENTE
+  EM_CHAMADA
+  ATENDEU
+  NAO_ATENDEU
+  TEXTO_ENVIADO
+  ERRO
+}
+
 enum MessageRole {
   user
   assistant
@@ -50,8 +59,9 @@ model Client {
 
   area     Area?     @relation(fields: [areaId], references: [id])
   origin   Origin?   @relation(fields: [originId], references: [id])
-  contract Contract?
-  messages Message[]
+  contract      Contract?
+  messages      Message[]
+  prospectLeads ProspectLead[]
 
   @@index([stage])
   @@index([originId])
@@ -283,6 +293,42 @@ model Settings {
   hubsoftGruposClienteIds    Int[]   @default([4])
   hubsoftGruposServicoIds    Int[]   @default([835])
   hubsoftServicoStatusId     Int     @default(6)
+
+  // Prompts e webhook de Prospecção
+  voiceAiPrompt              String  @default("")
+  textAiPrompt               String  @default("")
+  prospectingWebhookUrl      String  @default("")
+  isProspectingActive        Boolean @default(false)
+}
+
+model ProspectLead {
+  id             String         @id @default(cuid())
+  name           String
+  phone          String         @unique
+  secondaryPhone String?
+  email          String?
+  rawDocument    String?
+  street         String?
+  number         String?
+  complement     String?
+  neighborhood   String?
+  city           String?
+  state          String?
+  cep            String?
+  status         ProspectStatus @default(PENDENTE)
+  lastAction     String?
+  calledAt       DateTime?
+  textSentAt     DateTime?
+  notes          String?
+  clientId       String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  client         Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([phone])
+  @@index([createdAt])
 }
 
 model Upload {

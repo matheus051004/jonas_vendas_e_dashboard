@@ -102,11 +102,14 @@ export const SettingsWebhooksSchema = z.object({
   agentWebhookUrl: emptyOrUrl,
   outboundWebhookUrl: emptyOrUrl,
   contractWebhookUrl: emptyOrUrl,
+  prospectingWebhookUrl: emptyOrUrl,
   outboundWebhookSecret: z.string().nullable(),
 });
 
 export const SettingsPromptSchema = z.object({
   aiPrompt: z.string(),
+  voiceAiPrompt: z.string().optional(),
+  textAiPrompt: z.string().optional(),
 });
 
 export const SettingsHubsoftSchema = z.object({
@@ -130,6 +133,22 @@ const timeFormat = z
 export const SettingsFollowUpSchema = z.object({
   followUpStartTime: timeFormat,
   followUpEndTime: timeFormat,
+});
+
+export const ProspectLeadFormSchema = z.object({
+  name: required("o nome ou razão social"),
+  phone: required("o telefone"),
+  secondaryPhone: z.string().optional().nullable(),
+  email: z.string().optional().nullable(),
+  rawDocument: z.string().optional().nullable(),
+  street: z.string().optional().nullable(),
+  number: z.string().optional().nullable(),
+  complement: z.string().optional().nullable(),
+  neighborhood: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  state: z.string().optional().nullable(),
+  cep: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
 });
 
 
