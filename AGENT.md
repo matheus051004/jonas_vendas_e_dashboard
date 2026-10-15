@@ -79,7 +79,9 @@ Auth: `x-webhook-token` = `AGENT_API_TOKEN` (fallback `INBOUND_WEBHOOK_TOKEN`). 
 
 | Método | Path | Função |
 |--------|------|--------|
-| GET | `/api/agent/prompt` | getAiPrompt (instruções do sistema) |
+| GET | `/api/agent/prompt` | getAiPrompt (aceita `?type=voice` ou `?type=text`; padrão retorna todos os prompts) |
+| GET | `/api/agent/prompt/voice` | getVoiceAiPrompt (prompt da IA de voz para prospecção) |
+| GET | `/api/agent/prompt/text` | getTextAiPrompt (prompt da IA de texto para prospecção/fallback) |
 | GET | `/api/agent/clients/:phone` | contexto do lead |
 | GET | `/api/agent/clients/:phone/messages` | histórico |
 | PATCH | `/api/agent/clients/:phone` | updateClient |
@@ -95,6 +97,24 @@ Auth: `x-webhook-token` = `AGENT_API_TOKEN` (fallback `INBOUND_WEBHOOK_TOKEN`). 
 | POST | `/api/agent/clients/:phone/pause-followup` | pauseFollowUp (pausa follow-up do lead até que ele mande nova mensagem) |
 
 Serviços em `packages/shared/src/agent-services.ts`.
+
+### Módulo de Prospecção Ativa (Voz e Texto)
+
+- **Importação de Planilha**: Leitura de `.xlsx` (ex: `ceilandia.xlsx`) onde coluna K (11) = telefone principal normalizado com DDI 55, coluna A = Razão Social com extração de CNPJ para `rawDocument`, e colunas C a J = endereço. Duplicados são ignorados no upload.
+- **Fila BullMQ (`prospecting`)**: Concorrência 1 (`concurrency: 1`) e `lockDuration: 180s`.
+- **Criação Prévia do Cliente**: Antes de disparar a chamada, o lead é registrado/atualizado na tabela `Client` (estágio `NOVO_LEAD`), permitindo que a IA consuma ferramentas de venda e registre contrato durante a conversa.
+- **Ciclo de Ligação e Fallback**:
+  1. Worker assina o canal Redis Pub/Sub `prospect:call-result:<phone>` e envia POST para `prospectingWebhookUrl` com `action: "VOICE"`.
+  2. Provedor de telefonia notifica o resultado em `POST /api/webhooks/prospeccao/callback` (`{ phone: "55...", answered: true/false }`).
+  3. Se `answered == true`: marca `status = ATENDEU` e conclui.
+  4. Se `answered == false` ou timeout de 120s: marca `status = NAO_ATENDEU`, envia POST para `prospectingWebhookUrl` com `action: "TEXT"` (*fire-and-forget*), atualiza para `TEXTO_ENVIADO` e libera o próximo lead imediatamente.
+- **Endpoints de Controle**:
+  - `GET /api/prospeccao` (listagem paginada + métricas)
+  - `POST /api/prospeccao` (criação manual de lead)
+  - `DELETE /api/prospeccao` (exclusão em lote `{ ids: [...] }`)
+  - `POST /api/prospeccao/import` (upload de arquivo XLSX)
+  - `POST /api/prospeccao/start` (iniciar campanha para todos os pendentes ou seleção)
+  - `POST /api/prospeccao/pause` (pausar campanha)
 
 ### Settings
 
@@ -112,3 +132,9 @@ Linha única `Settings` (`id = "default"`): branding + `aiPrompt` + `agentWebhoo
 - `packages/shared`: bullmq, ioredis, zod (sem Langchain/OpenAI)
 
 Import: `@jonas/db` e `@jonas/shared` (workspace). Preferir dados via `shared` quando já expostos.
+
+
+
+## Post-change review
+
+After completing any relevant code changes and before reporting the task as finished, delegate a subagent to review the resulting diff using the `ponytail-review` skill. Review for security implications, correctness, best practices, unnecessary duplication, and modularity. Resolve verified findings before finalizing.
