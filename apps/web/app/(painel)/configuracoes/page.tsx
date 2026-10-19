@@ -17,6 +17,10 @@ import {
   Tooltip,
   Typography,
   Chip,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import PaletteIcon from "@mui/icons-material/Palette";
@@ -26,6 +30,7 @@ import TuneIcon from "@mui/icons-material/Tune";
 import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import AddIcon from "@mui/icons-material/Add";
 import {
   SettingsBrandingSchema,
   SettingsWebhooksSchema,
@@ -36,6 +41,7 @@ import {
 import { firstFieldError, submitJson, zodFieldErrors, type FieldErrors } from "@/lib/form-errors";
 import { ColorPickerField } from "@/lib/color-picker-field";
 import { useBranding, type Branding } from "@/lib/branding";
+import { formatMinutes, DEFAULT_FOLLOW_UP_INTERVALS } from "@/lib/formatters";
 import Grid from "@mui/material/Grid2";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ImageIcon from "@mui/icons-material/Image";
@@ -56,6 +62,7 @@ interface Settings {
   outboundWebhookSecret: string | null;
   followUpStartTime: string | null;
   followUpEndTime: string | null;
+  followUpIntervals: number[];
   hubsoftBaseUrl: string;
   hubsoftVendedorId: number;
   hubsoftMotivoContratacaoId: number;
@@ -74,7 +81,11 @@ const BRANDING_FIELDS: (keyof Settings)[] = [
 
 const PROMPT_FIELDS: (keyof Settings)[] = ["aiPrompt", "voiceAiPrompt", "textAiPrompt"];
 
-const FOLLOWUP_FIELDS: (keyof Settings)[] = ["followUpStartTime", "followUpEndTime"];
+const FOLLOWUP_FIELDS: (keyof Settings)[] = [
+  "followUpStartTime",
+  "followUpEndTime",
+  "followUpIntervals",
+];
 
 const WEBHOOK_FIELDS: (keyof Settings)[] = [
   "agentWebhookUrl",
@@ -172,6 +183,153 @@ function SectionCard({
   );
 }
 
+function IntervalRow({
+  index,
+  minutes,
+  total,
+  onChange,
+  onRemove,
+}: {
+  index: number;
+  minutes: number;
+  total: number;
+  onChange: (val: number) => void;
+  onRemove: () => void;
+}) {
+  const initialUnit: "minutos" | "horas" | "dias" =
+    minutes >= 1440 && minutes % 1440 === 0
+      ? "dias"
+      : minutes >= 60 && minutes % 60 === 0
+      ? "horas"
+      : "minutos";
+  const initialVal =
+    initialUnit === "dias"
+      ? minutes / 1440
+      : initialUnit === "horas"
+      ? minutes / 60
+      : minutes;
+
+  const [unit, setUnit] = React.useState<"minutos" | "horas" | "dias">(initialUnit);
+  const [valInput, setValInput] = React.useState<string>(String(initialVal));
+
+  React.useEffect(() => {
+    const u: "minutos" | "horas" | "dias" =
+      minutes >= 1440 && minutes % 1440 === 0
+        ? "dias"
+        : minutes >= 60 && minutes % 60 === 0
+        ? "horas"
+        : "minutos";
+    const v =
+      u === "dias"
+        ? minutes / 1440
+        : u === "horas"
+        ? minutes / 60
+        : minutes;
+    setUnit(u);
+    setValInput(String(v));
+  }, [minutes]);
+
+  const commitValue = (rawString: string, currentUnit: "minutos" | "horas" | "dias") => {
+    const parsed = parseInt(rawString, 10);
+    const safeVal = isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 43200);
+    setValInput(String(safeVal));
+    const m = currentUnit === "dias" ? safeVal * 1440 : currentUnit === "horas" ? safeVal * 60 : safeVal;
+    onChange(m);
+  };
+
+  const handleUnitChange = (newUnit: "minutos" | "horas" | "dias") => {
+    setUnit(newUnit);
+    commitValue(valInput, newUnit);
+  };
+
+  return (
+    <Box
+      sx={{
+        p: 2,
+        borderRadius: 2,
+        border: 1,
+        borderColor: "divider",
+        bgcolor: "background.paper",
+        transition: "border-color 0.2s, box-shadow 0.2s",
+        "&:hover": { borderColor: "primary.main" },
+      }}
+    >
+      <Stack spacing={1.5}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between">
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <Chip
+              label={`${index + 1}ª Tentativa`}
+              size="small"
+              color={index === 0 ? "primary" : "secondary"}
+              variant="outlined"
+              sx={{ fontWeight: 600 }}
+            />
+            <Typography variant="body2" fontWeight={600} color="text.primary">
+              {formatMinutes(minutes)}
+            </Typography>
+          </Stack>
+          <Tooltip title={total <= 1 ? "Mínimo de 1 etapa necessária" : "Excluir etapa"}>
+            <span>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={onRemove}
+                disabled={total <= 1}
+                aria-label={`Excluir etapa ${index + 1}`}
+              >
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        </Stack>
+
+        <Grid container spacing={2} alignItems="center">
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <TextField
+              label="Tempo de espera"
+              type="number"
+              size="small"
+              fullWidth
+              value={valInput}
+              inputProps={{ min: 1, step: 1, max: 43200 }}
+              onChange={(e) => {
+                setValInput(e.target.value);
+                const p = parseInt(e.target.value, 10);
+                if (!isNaN(p) && p >= 1) {
+                  const m = unit === "dias" ? p * 1440 : unit === "horas" ? p * 60 : p;
+                  onChange(Math.min(m, 43200));
+                }
+              }}
+              onBlur={() => commitValue(valInput, unit)}
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl size="small" fullWidth>
+              <InputLabel id={`unit-label-${index}`}>Unidade</InputLabel>
+              <Select
+                labelId={`unit-label-${index}`}
+                label="Unidade"
+                value={unit}
+                onChange={(e) => handleUnitChange(e.target.value as "minutos" | "horas" | "dias")}
+              >
+                <MenuItem value="minutos">Minutos</MenuItem>
+                <MenuItem value="horas">Horas</MenuItem>
+                <MenuItem value="dias">Dias</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+
+        <Typography variant="caption" color="text.secondary">
+          {index === 0
+            ? `Dispara ${formatMinutes(minutes)} após a última mensagem enviada pelo cliente.`
+            : `Dispara ${formatMinutes(minutes)} após a tentativa anterior sem retorno.`}
+        </Typography>
+      </Stack>
+    </Box>
+  );
+}
+
 export default function ConfiguracoesPage() {
   const { setBranding } = useBranding();
   const [activeTab, setActiveTab] = React.useState(0);
@@ -204,6 +362,10 @@ export default function ConfiguracoesPage() {
           outboundWebhookSecret: data.outboundWebhookSecret ?? null,
           followUpStartTime: data.followUpStartTime ?? "",
           followUpEndTime: data.followUpEndTime ?? "",
+          followUpIntervals:
+            Array.isArray(data.followUpIntervals) && data.followUpIntervals.length > 0
+              ? data.followUpIntervals
+              : [...DEFAULT_FOLLOW_UP_INTERVALS],
           hubsoftBaseUrl: data.hubsoftBaseUrl || "https://api.ligtop.hubsoft.com.br",
           hubsoftVendedorId: data.hubsoftVendedorId ?? 636,
           hubsoftMotivoContratacaoId: data.hubsoftMotivoContratacaoId ?? 48,
@@ -905,6 +1067,96 @@ export default function ConfiguracoesPage() {
       {/* ABA 3: FOLLOW-UP & HUBSOFT */}
       {activeTab === 3 && (
         <Stack spacing={3}>
+          {/* INTERVALOS DE FOLLOW-UP */}
+          <SectionCard
+            title="Períodos de Follow-up (Vendas)"
+            description="Configure as etapas e intervalos de espera para retomar o contato automaticamente quando o cliente parar de responder no chat."
+            badge={
+              <Chip
+                label={`${form.followUpIntervals?.length || 0} ${(form.followUpIntervals?.length || 0) === 1 ? "etapa" : "etapas"}`}
+                color="primary"
+                variant="outlined"
+                size="small"
+              />
+            }
+          >
+            {/* Modelos prontos / Presets */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                Modelos prontos
+              </Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {[
+                  { label: "Padrão (1h, 2h, 3h)", intervals: [60, 120, 180] },
+                  { label: "Ágil (15m, 1h, 3h)", intervals: [15, 60, 180] },
+                  { label: "Espaçado (2h, 6h, 24h)", intervals: [120, 360, 1440] },
+                  { label: "Curto (30m, 2h)", intervals: [30, 120] },
+                ].map((preset) => (
+                  <Chip
+                    key={preset.label}
+                    label={preset.label}
+                    onClick={() => setForm({ ...form, followUpIntervals: [...preset.intervals] })}
+                    variant="outlined"
+                    size="small"
+                    sx={{ cursor: "pointer", "&:hover": { borderColor: "primary.main", bgcolor: "action.hover" } }}
+                  />
+                ))}
+              </Stack>
+            </Box>
+
+            <Divider />
+
+            {/* Lista de etapas configuradas */}
+            <Stack spacing={2}>
+              {(form.followUpIntervals ?? [60, 120, 180]).map((minutes, idx) => (
+                <IntervalRow
+                  key={idx}
+                  index={idx}
+                  minutes={minutes}
+                  total={form.followUpIntervals?.length ?? 1}
+                  onChange={(newMinutes) => {
+                    const next = [...(form.followUpIntervals ?? [60, 120, 180])];
+                    next[idx] = newMinutes;
+                    setForm({ ...form, followUpIntervals: next });
+                  }}
+                  onRemove={() => {
+                    const current = form.followUpIntervals ?? [60, 120, 180];
+                    if (current.length <= 1) return;
+                    const next = current.filter((_, i) => i !== idx);
+                    setForm({ ...form, followUpIntervals: next });
+                  }}
+                />
+              ))}
+            </Stack>
+
+            <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1}>
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                disabled={(form.followUpIntervals?.length ?? 0) >= 10}
+                onClick={() => {
+                  const current = form.followUpIntervals ?? [60, 120, 180];
+                  if (current.length >= 10) return;
+                  const last = current[current.length - 1] ?? 60;
+                  setForm({ ...form, followUpIntervals: [...current, last + 60] });
+                }}
+              >
+                Adicionar etapa
+              </Button>
+              <Typography variant="caption" color="text.secondary">
+                {(form.followUpIntervals?.length ?? 0) >= 10
+                  ? "Limite máximo de 10 etapas atingido."
+                  : `Configuradas ${form.followUpIntervals?.length ?? 0} de até 10 etapas.`}
+              </Typography>
+            </Stack>
+
+            <Typography variant="body2" color="text.secondary">
+              Após a última etapa configurada sem retorno do cliente, o lead é movido automaticamente para o estágio{" "}
+              <strong>Parou de responder</strong>.
+            </Typography>
+          </SectionCard>
+
+          {/* JANELA DE HORÁRIOS */}
           <SectionCard
             title="Janela de Horários para Follow-up"
             description="Configure o intervalo de horário permitido para envio de follow-up automático aos leads (horário de São Paulo). Fora desta janela, os disparos são ignorados."
@@ -941,13 +1193,13 @@ export default function ConfiguracoesPage() {
             <Typography variant="body2" color="text.secondary">
               Respeitando o horário oficial de Brasília/São Paulo (America/Sao_Paulo). Se a fila de follow-up rodar fora dessa janela, o disparo é ignorado e não perturba o lead. Deixe em branco caso deseje desativar a restrição de horário.
             </Typography>
-
-            <Stack direction="row" justifyContent="flex-end">
-              <Button variant="contained" onClick={() => void handleSaveFollowUp()}>
-                Salvar janela de follow-up
-              </Button>
-            </Stack>
           </SectionCard>
+
+          <Stack direction="row" justifyContent="flex-end">
+            <Button size="large" variant="contained" onClick={() => void handleSaveFollowUp()}>
+              Salvar configurações de follow-up
+            </Button>
+          </Stack>
 
           <SectionCard
             title="Padrões de Integração Hubsoft"

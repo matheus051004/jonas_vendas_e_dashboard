@@ -2,7 +2,7 @@ import { prisma, SaleStage, type Prisma } from "@jonas/db";
 import { asWebhookMetadata, type RegisterContractInput, type RegisterContractPJInput } from "./types";
 import { sendContractWebhook, sendAgentWebhook } from "./webhooks";
 import { listMessages } from "./messages";
-import { scheduleFollowUp, cancelFollowUp } from "./queue";
+import { scheduleFollowUp, cancelFollowUp, DEFAULT_FOLLOW_UP_INTERVALS } from "./queue";
 import { getSettings } from "./settings";
 import { addSystemLog } from "./logger";
 import { findClientByPhone } from "./clients";
@@ -1074,7 +1074,7 @@ export async function pauseFollowUp(phone: string) {
  */
 export async function triggerFollowUp(
   clientIdOrPhone: string,
-  forcedAttempt?: 1 | 2 | 3
+  forcedAttempt?: number
 ) {
   const client = await prisma.client.findFirst({
     where: {
@@ -1094,9 +1094,16 @@ export async function triggerFollowUp(
     throw new Error("Não é possível enviar follow-up: o follow-up deste cliente está pausado.");
   }
 
-  const attempt: 1 | 2 | 3 =
-    forcedAttempt ??
-    ((Math.min(Math.max((client.followUpCount || 0) + 1, 1), 3)) as 1 | 2 | 3);
+  const settings = await getSettings();
+  const intervals =
+    settings.followUpIntervals?.length ? settings.followUpIntervals : DEFAULT_FOLLOW_UP_INTERVALS;
+  const maxAttempts = intervals.length;
+
+  const targetAttempt = forcedAttempt ?? (client.followUpCount || 0) + 1;
+  const attempt: number = Math.min(
+    Math.max(Math.floor(targetAttempt), 1),
+    Math.max(maxAttempts, 1)
+  );
 
   const stageUpdate =
     client.stage === SaleStage.INTERESSADO || client.stage === SaleStage.NOVO_LEAD
@@ -1128,18 +1135,19 @@ export async function triggerFollowUp(
   await addSystemLog({
     level: "info",
     source: "panel",
-    message: `Follow-up forçado manualmente (tentativa ${attempt}/3).`,
+    message: `Follow-up forçado manualmente (tentativa ${attempt}/${maxAttempts}).`,
     phone: client.phone,
     details: {
       clientId: client.id,
       attempt,
+      maxAttempts,
       previousStage: client.stage,
       newStage: fresh.stage,
     },
   });
 
-  if (attempt < 3) {
-    await scheduleFollowUp(client.phone, (attempt + 1) as 2 | 3);
+  if (attempt < maxAttempts) {
+    await scheduleFollowUp(client.phone, attempt + 1);
   } else {
     await cancelFollowUp(client.phone);
   }

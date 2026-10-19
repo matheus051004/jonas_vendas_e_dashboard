@@ -34,6 +34,7 @@ const SettingsUpdateSchema = z.object({
   outboundWebhookSecret: z.string().nullish(),
   followUpStartTime: timeFormat,
   followUpEndTime: timeFormat,
+  followUpIntervals: z.array(z.number().int().min(1).max(43200)).min(1).max(10).optional(),
   hubsoftBaseUrl: z.string().url().optional(),
   hubsoftVendedorId: z.number().int().positive().optional(),
   hubsoftMotivoContratacaoId: z.number().int().positive().optional(),

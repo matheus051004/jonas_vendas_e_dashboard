@@ -1,5 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
 import { triggerFollowUp } from "@jonas/shared";
+
+const ForceFollowUpBodySchema = z
+  .object({
+    attempt: z.number().int().min(1).max(20).optional(),
+  })
+  .optional();
 
 export async function POST(
   req: NextRequest,
@@ -11,15 +18,9 @@ export async function POST(
       return NextResponse.json({ error: "clientId obrigatório" }, { status: 400 });
     }
 
-    let attempt: 1 | 2 | 3 | undefined;
-    try {
-      const body = await req.json();
-      if (body && typeof body.attempt === "number" && [1, 2, 3].includes(body.attempt)) {
-        attempt = body.attempt as 1 | 2 | 3;
-      }
-    } catch {
-      // Body opcional, ignora se não tiver JSON
-    }
+    const raw = await req.json().catch(() => ({}));
+    const parsed = ForceFollowUpBodySchema.safeParse(raw);
+    const attempt = parsed.success ? parsed.data?.attempt : undefined;
 
     const result = await triggerFollowUp(clientId, attempt);
     return NextResponse.json(result);

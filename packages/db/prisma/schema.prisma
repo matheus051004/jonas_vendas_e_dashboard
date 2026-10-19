@@ -286,6 +286,8 @@ model Settings {
   // Formato "HH:mm" (ex.: "08:00" e "20:00"). Fora da janela, o follow-up é ignorado.
   followUpStartTime          String? @default("08:00")
   followUpEndTime            String? @default("20:00")
+  // Intervalos de follow-up em minutos para cada tentativa nas vendas (ex.: [60, 120, 180])
+  followUpIntervals          Int[]   @default([60, 120, 180])
   // Padrões de integração com Hubsoft
   hubsoftBaseUrl             String  @default("https://api.ligtop.hubsoft.com.br")
   hubsoftVendedorId          Int     @default(636)

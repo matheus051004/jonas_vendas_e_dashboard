@@ -133,6 +133,16 @@ const timeFormat = z
 export const SettingsFollowUpSchema = z.object({
   followUpStartTime: timeFormat,
   followUpEndTime: timeFormat,
+  followUpIntervals: z
+    .array(
+      z
+        .number()
+        .int("Deve ser um número inteiro")
+        .min(1, "O intervalo mínimo é de 1 minuto")
+        .max(43200, "O intervalo máximo é de 30 dias (43.200 minutos)")
+    )
+    .min(1, "Configure ao menos 1 etapa de follow-up")
+    .max(10, "Máximo de 10 etapas de follow-up"),
 });
 
 export const ProspectLeadFormSchema = z.object({

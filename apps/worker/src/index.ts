@@ -17,6 +17,7 @@ import {
   ensureClientForProspect,
   sendProspectingWebhook,
   waitForCallResult,
+  DEFAULT_FOLLOW_UP_INTERVALS,
   type IncomingMessageJob,
   type FollowUpJob,
   type ProspectingCallJob,
@@ -94,7 +95,12 @@ const messagesWorker = new Worker<IncomingMessageJob>(
     });
 
     const updated = await prisma.client.findUniqueOrThrow({ where: { id: client.id } });
+    const settings = await getSettings();
+    const intervals =
+      settings.followUpIntervals?.length ? settings.followUpIntervals : DEFAULT_FOLLOW_UP_INTERVALS;
+
     if (
+      intervals.length > 0 &&
       updated.stage !== SaleStage.FECHOU_VENDA &&
       updated.stage !== SaleStage.DESISTIU &&
       updated.stage !== SaleStage.ACHOU_CARO &&
@@ -166,8 +172,12 @@ const followUpsWorker = new Worker<FollowUpJob>(
       client: serializeClientForAgent(fresh),
     });
 
-    if (attempt < 3) {
-      await scheduleFollowUp(phone, (attempt + 1) as 2 | 3);
+    const intervals =
+      settings.followUpIntervals?.length ? settings.followUpIntervals : DEFAULT_FOLLOW_UP_INTERVALS;
+    const maxAttempts = intervals.length;
+
+    if (attempt < maxAttempts) {
+      await scheduleFollowUp(phone, attempt + 1);
     } else {
       await prisma.client.update({ where: { id: client.id }, data: { stage: SaleStage.PAROU_DE_RESPONDER } });
     }

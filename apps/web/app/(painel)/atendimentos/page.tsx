@@ -42,6 +42,7 @@ import CircleIcon from "@mui/icons-material/Circle";
 import ScheduleSendIcon from "@mui/icons-material/ScheduleSend";
 
 import PersonIcon from "@mui/icons-material/Person";
+import { formatMinutes, DEFAULT_FOLLOW_UP_INTERVALS } from "@/lib/formatters";
 
 const STAGE_LABELS: Record<string, string> = {
   NOVO_LEAD: "Novo lead",
@@ -321,6 +322,22 @@ export default function AtendimentosPage() {
   const [followUpDialogOpen, setFollowUpDialogOpen] = React.useState(false);
   const [followUpAttempt, setFollowUpAttempt] = React.useState<number>(1);
   const [followUpLoading, setFollowUpLoading] = React.useState(false);
+  const [followUpIntervals, setFollowUpIntervals] = React.useState<number[]>([
+    ...DEFAULT_FOLLOW_UP_INTERVALS,
+  ]);
+  const maxFollowUps = followUpIntervals.length > 0 ? followUpIntervals.length : 3;
+
+  React.useEffect(() => {
+    fetch("/api/configuracoes")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data?.followUpIntervals) && data.followUpIntervals.length > 0) {
+          setFollowUpIntervals(data.followUpIntervals);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const [feedbackSnackbar, setFeedbackSnackbar] = React.useState<{
     open: boolean;
     message: string;
@@ -334,7 +351,7 @@ export default function AtendimentosPage() {
   const handleOpenFollowUpDialog = () => {
     if (!detail) return;
     const currentCount = detail.followUpCount ?? 0;
-    const nextAttempt = Math.min(Math.max(currentCount + 1, 1), 3);
+    const nextAttempt = Math.min(Math.max(currentCount + 1, 1), maxFollowUps);
     setFollowUpAttempt(nextAttempt);
     setFollowUpDialogOpen(true);
   };
@@ -707,7 +724,7 @@ export default function AtendimentosPage() {
                                 {c.followUpCount != null && c.followUpCount > 0 && (
                                   <Chip
                                     size="small"
-                                    label={`Follow-up ${c.followUpCount}/3`}
+                                    label={`Follow-up ${Math.min(c.followUpCount, maxFollowUps)}/${maxFollowUps}`}
                                     color="secondary"
                                     variant="outlined"
                                     sx={{ height: 20, fontSize: "0.65rem" }}
@@ -806,7 +823,7 @@ export default function AtendimentosPage() {
                     {detail && detail.followUpCount != null && detail.followUpCount > 0 && (
                       <Chip
                         size="small"
-                        label={`Follow-up ${detail.followUpCount}/3`}
+                        label={`Follow-up ${Math.min(detail.followUpCount, maxFollowUps)}/${maxFollowUps}`}
                         color="secondary"
                         variant="outlined"
                       />
@@ -945,51 +962,41 @@ export default function AtendimentosPage() {
               value={followUpAttempt}
               onChange={(e) => setFollowUpAttempt(Number(e.target.value))}
             >
-              <FormControlLabel
-                value={1}
-                control={<Radio size="small" />}
-                label={
-                  <Box sx={{ py: 0.5 }}>
-                    <Typography variant="body2" fontWeight={600}>
-                      Tentativa 1 · Retomada amigável
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Mensagem inicial para reatar o contato e tirar dúvidas pendentes.
-                    </Typography>
-                  </Box>
+              {Array.from({ length: maxFollowUps }, (_, i) => {
+                const num = i + 1;
+                const intervalMinutes = followUpIntervals[i] ?? 60;
+                let title = `Tentativa ${num} · Acompanhamento`;
+                let desc = `Disparo após ${formatMinutes(intervalMinutes)} sem retorno.`;
+                if (num === 1) {
+                  title = "Tentativa 1 · Retomada inicial";
+                  desc = `Mensagem inicial para reatar o contato (${formatMinutes(intervalMinutes)} após a última mensagem).`;
+                } else if (num === maxFollowUps) {
+                  title = `Tentativa ${num} · Última chamada`;
+                  desc = `Última tentativa antes do encerramento (${formatMinutes(intervalMinutes)} após tentativa anterior).`;
+                } else if (num === 2) {
+                  title = "Tentativa 2 · Vantagens e diferenciais";
+                  desc = `Reforço dos benefícios do plano e valor agregado (${formatMinutes(intervalMinutes)} após tentativa 1).`;
                 }
-                sx={{ mb: 1, alignItems: "flex-start" }}
-              />
-              <FormControlLabel
-                value={2}
-                control={<Radio size="small" />}
-                label={
-                  <Box sx={{ py: 0.5 }}>
-                    <Typography variant="body2" fontWeight={600}>
-                      Tentativa 2 · Vantagens e diferenciais
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Reforço dos benefícios do plano e valor agregado do provedor.
-                    </Typography>
-                  </Box>
-                }
-                sx={{ mb: 1, alignItems: "flex-start" }}
-              />
-              <FormControlLabel
-                value={3}
-                control={<Radio size="small" />}
-                label={
-                  <Box sx={{ py: 0.5 }}>
-                    <Typography variant="body2" fontWeight={600}>
-                      Tentativa 3 · Última chamada
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Última tentativa de contato antes do encerramento do atendimento.
-                    </Typography>
-                  </Box>
-                }
-                sx={{ alignItems: "flex-start" }}
-              />
+
+                return (
+                  <FormControlLabel
+                    key={num}
+                    value={num}
+                    control={<Radio size="small" />}
+                    label={
+                      <Box sx={{ py: 0.5 }}>
+                        <Typography variant="body2" fontWeight={600}>
+                          {title}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {desc}
+                        </Typography>
+                      </Box>
+                    }
+                    sx={{ mb: num < maxFollowUps ? 1 : 0, alignItems: "flex-start" }}
+                  />
+                );
+              })}
             </RadioGroup>
           </FormControl>
         </DialogContent>

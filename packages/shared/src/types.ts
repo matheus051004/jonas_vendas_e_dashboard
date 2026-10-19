@@ -122,7 +122,7 @@ export type AgentWebhookPayload =
       event: "followup.due";
       phone: string;
       clientId: string;
-      attempt: 1 | 2 | 3;
+      attempt: number;
       metadata?: WebhookMetadata;
       client: Record<string, unknown>;
       history?: Array<{
@@ -147,7 +147,7 @@ export interface IncomingMessageJob {
 // Job enfileirado na fila "followups".
 export interface FollowUpJob {
   phone: string;
-  attempt: 1 | 2 | 3;
+  attempt: number;
 }
 
 export const UpdateClientBodySchema = z.object({
