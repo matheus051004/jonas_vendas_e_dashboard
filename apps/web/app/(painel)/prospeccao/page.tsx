@@ -64,6 +64,9 @@ interface ProspectLead {
   calledAt: string | null;
   textSentAt: string | null;
   notes: string | null;
+  elevenLabsConversationId: string | null;
+  callDurationSecs: number | null;
+  callSummary: string | null;
   clientId: string | null;
   createdAt: string;
 }
@@ -294,24 +297,25 @@ export default function ProspeccaoPage() {
     }
   }
 
-  async function handleStartSelected() {
-    if (selectedIds.length === 0) return;
+  async function handleStartSelected(overrideIds?: string[]) {
+    const ids = overrideIds ?? selectedIds.map(String);
+    if (ids.length === 0) return;
     setCampaignActionLoading(true);
     try {
       const res = await fetch("/api/prospeccao/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadIds: selectedIds }),
+        body: JSON.stringify({ leadIds: ids }),
       });
       const data = await res.json();
       if (data.ok) {
         setMetrics((prev) => ({ ...prev, isProspectingActive: true }));
         setSnackbar({
           open: true,
-          message: `${data.queuedCount} leads selecionados foram colocados na fila de chamadas.`,
+          message: `${data.queuedCount} lead(s) adicionado(s) à fila de chamadas.`,
           severity: "success",
         });
-        setSelectedIds([]);
+        if (!overrideIds) setSelectedIds([]);
         await loadData();
       }
     } catch {
@@ -585,6 +589,7 @@ export default function ProspeccaoPage() {
             {date && (
               <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.25 }}>
                 {new Date(date).toLocaleString("pt-BR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
+                {lead.callDurationSecs != null ? ` • ${lead.callDurationSecs}s` : ""}
               </Typography>
             )}
           </Box>
@@ -600,17 +605,23 @@ export default function ProspeccaoPage() {
         const lead = params.row as ProspectLead;
         return (
           <Stack direction="row" spacing={0.5}>
-            <Tooltip title="Disparar Ligação Avulsa">
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={() => {
-                  setSelectedIds([lead.id]);
-                  void handleStartSelected();
-                }}
-              >
-                <PhoneCallbackIcon fontSize="small" />
-              </IconButton>
+            <Tooltip
+              title={
+                lead.status === "ATENDEU" || lead.status === "TEXTO_ENVIADO"
+                  ? "Lead já atendido ou texto enviado"
+                  : "Disparar Ligação Avulsa"
+              }
+            >
+              <span>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  disabled={lead.status === "ATENDEU" || lead.status === "TEXTO_ENVIADO"}
+                  onClick={() => void handleStartSelected([lead.id])}
+                >
+                  <PhoneCallbackIcon fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
             <Tooltip title="Editar Lead">
               <IconButton size="small" onClick={() => handleOpenEditModal(lead)}>
@@ -1056,6 +1067,25 @@ export default function ProspeccaoPage() {
                 onChange={(e) => setLeadForm({ ...leadForm, notes: e.target.value })}
               />
             </Grid>
+
+            {editingLead?.elevenLabsConversationId && (
+              <Grid size={{ xs: 12 }}>
+                <Alert severity="info" variant="outlined">
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    Registro da Ligação ElevenLabs
+                  </Typography>
+                  <Typography variant="caption" display="block" sx={{ fontFamily: "monospace" }}>
+                    Conversation ID: {editingLead.elevenLabsConversationId}
+                    {editingLead.callDurationSecs != null ? ` | Duração: ${editingLead.callDurationSecs}s` : ""}
+                  </Typography>
+                  {editingLead.callSummary && (
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      {editingLead.callSummary}
+                    </Typography>
+                  )}
+                </Alert>
+              </Grid>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>

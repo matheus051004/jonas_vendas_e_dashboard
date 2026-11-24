@@ -303,7 +303,7 @@ export default function DocumentacaoPage() {
 
   const inboundUrl = `${origin}/api/webhooks/inbound`;
   const agentReplyUrl = `${origin}/api/webhooks/agent/reply`;
-  const prospectingCallbackUrl = `${origin}/api/webhooks/prospeccao/callback`;
+  const elevenLabsWebhookUrl = `${origin}/api/webhooks/elevenlabs`;
 
   return (
     <Stack spacing={3} sx={{ maxWidth: 980, mx: "auto" }}>
@@ -354,7 +354,7 @@ export default function DocumentacaoPage() {
               <br />
               1. <strong>Atendimento Receptivo (Chat/WhatsApp):</strong> Recebe mensagens em <code>/api/webhooks/inbound</code>, notifica a IA externa via <code>agentWebhookUrl</code> e expõe tools REST para a IA fechar contratos e responder pelo <code>/api/webhooks/agent/reply</code>.
               <br />
-              2. <strong>Prospecção Ativa (Voz e Texto):</strong> Percorre leads de planilhas com <strong>concorrência 1</strong>, dispara chamadas de voz via webhook, sincroniza o resultado via callback de telefonia e realiza fallback de texto automático se a ligação falhar.
+              2. <strong>Prospecção Ativa (ElevenLabs SIP Trunk + Fallback de Texto):</strong> Percorre leads de planilhas com <strong>concorrência 1</strong>, inicia ligações diretamente na ElevenLabs via SIP Trunk, recebe transcrição e falhas pelo Post-Call Webhook e dispara fallback de texto opcional se configurado.
             </Alert>
             <CodeBlock
               language="text"
@@ -375,20 +375,22 @@ Worker  → Salva Message (user)
                     ▼
               Salva Message (assistant) → POST outboundWebhookUrl (app de chat)
 
-PROSPECÇÃO ATIVA (VOZ E TEXTO):
+PROSPECÇÃO ATIVA (ELEVENLABS SIP TRUNK):
 Planilha XLSX (/prospeccao) → Fila BullMQ "prospecting" (concurrency: 1)
     │
     ▼
 Worker  → Garante registro do Lead como Client (NOVO_LEAD)
-        → POST prospectingWebhookUrl { action: "VOICE", phone, name, ... }
-        → Aguarda Redis Pub/Sub (timeout 120s)
+        → POST https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call
+          (dynamic_variables do lead + override opcional de voiceAiPrompt / voiceFirstMessage)
+        → Aguarda Redis Pub/Sub (timeout 15 min)
               │
-              ├─ Telefonia atendeu → POST /api/webhooks/prospeccao/callback { phone, answered: true }
-              │  └─ Marca lead ATENDEU → Avança para o próximo lead
+              ├─ Atendeu → ElevenLabs consome /api/agent/* durante a ligação
+              │  └─ Fim da chamada → POST /api/webhooks/elevenlabs (post_call_transcription)
+              │  └─ Salva transcrição em Message + marca lead ATENDEU → Próximo lead
               │
-              └─ Não atendeu / Timeout → POST /api/webhooks/prospeccao/callback { phone, answered: false }
-                 └─ POST prospectingWebhookUrl { action: "TEXT", ... }
-                 └─ Marca lead TEXTO_ENVIADO → Avança imediatamente para o próximo lead`}
+              └─ Não atendeu / Falha SIP / Timeout → POST /api/webhooks/elevenlabs (call_initiation_failure)
+                 └─ Marca lead NAO_ATENDEU
+                 └─ Se prospectingTextWebhookUrl configurada → POST { action: "TEXT" } → TEXTO_ENVIADO`}
             />
           </Section>
 
@@ -396,7 +398,7 @@ Worker  → Garante registro do Lead como Client (NOVO_LEAD)
             id="auth"
             icon={<LockOutlinedIcon />}
             title="Autenticação e Segurança"
-            description="Diferenciação entre tokens de API/Webhook e sessão do painel administrativo."
+            description="Diferenciação entre tokens de API/Webhook, assinatura ElevenLabs e sessão do painel."
           >
             <Stack spacing={2}>
               <Box>
@@ -405,7 +407,9 @@ Worker  → Garante registro do Lead como Client (NOVO_LEAD)
                 </Typography>
                 <Typography variant="body2" color="text.secondary" paragraph>
                   Header HTTP obrigatório: <code>x-webhook-token</code> com o valor de <code>AGENT_API_TOKEN</code> (ou <code>INBOUND_WEBHOOK_TOKEN</code> como fallback).
-                  Utilizado em todas as rotas <code>/api/agent/*</code>, <code>/api/webhooks/inbound</code>, <code>/api/webhooks/agent/reply</code> e <code>/api/webhooks/prospeccao/callback</code>.
+                  Utilizado em todas as rotas <code>/api/agent/*</code>, <code>/api/webhooks/inbound</code> e <code>/api/webhooks/agent/reply</code>.
+                  <br />
+                  A rota <code>/api/webhooks/elevenlabs</code> valida a assinatura HMAC-SHA256 oficial enviada no header <code>ElevenLabs-Signature</code> (<code>t=...,v0=...</code>) usando <code>elevenLabsWebhookSecret</code>.
                 </Typography>
               </Box>
               <Divider />
@@ -467,12 +471,12 @@ function verifySignature(rawBody, secret, signatureHeader) {
           <Section
             id="prospeccao-visao-geral"
             icon={<PhoneInTalkIcon />}
-            title="Visão Geral da Prospecção Ativa"
-            description="Processamento de listas frias de contatos com alternância inteligente entre ligação de voz e mensagem de texto."
+            title="Visão Geral da Prospecção Ativa (ElevenLabs SIP Trunk)"
+            description="Disparo direto de ligações com IA de voz via ElevenLabs Agents + SIP Trunk e fallback opcional por texto."
           >
             <Alert severity="success" variant="outlined">
               <strong>Regra de Ouro da Fila:</strong> Apenas <strong>1 ligação telefônica em paralelo</strong> ocorre por vez (BullMQ com <code>concurrency: 1</code>).
-              O worker aguarda a finalização da ligação pelo webhook de retorno ou timeout (120s). Se a ligação falhar ou não atender, o sistema dispara imediatamente uma mensagem de texto e já puxa o próximo lead da fila.
+              O worker inicia a chamada diretamente na API da ElevenLabs e aguarda o Post-Call Webhook (até 15 min para ligações atendidas; falhas SIP retornam imediatamente). Se não houver atendimento e <code>prospectingTextWebhookUrl</code> estiver configurada, o fallback de texto é disparado antes de puxar o próximo lead.
             </Alert>
 
             <Typography variant="subtitle2" sx={{ mt: 1 }}>
@@ -488,42 +492,89 @@ function verifySignature(rawBody, secret, signatureHeader) {
             </Stack>
           </Section>
 
-          {/* Webhook Outbound de Prospecção */}
+          {/* Disparo SIP ElevenLabs */}
           <Section
-            id="prospeccao-outbound"
+            id="prospeccao-elevenlabs"
             icon={<CallMadeIcon />}
-            title="Webhook de Disparo da Prospecção (prospectingWebhookUrl)"
-            description="Disparado pelo worker para o seu provedor de telefonia ou discador para solicitar a chamada ou mensagem."
+            title="Integração ElevenLabs Agents (SIP Trunk)"
+            description="Disparo direto do worker para a API da ElevenLabs com dynamic_variables do lead e overrides de prompt configurados no painel."
           >
-            <EndpointHeader method="POST" path="{prospectingWebhookUrl}" auth="token" />
+            <EndpointHeader method="POST" path="https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call" auth="public" />
 
             <Typography variant="subtitle2" sx={{ mt: 1 }}>
-              Payload para Ligação de Voz (action: "VOICE"):
+              Payload enviado pelo worker:
             </Typography>
             <CodeBlock
               language="json"
               code={`{
-  "leadId": "clx_lead_123",
-  "clientId": "clx_client_456",
-  "phone": "5561991640073",
-  "name": "CARLOS ROBERTO LOPES",
-  "action": "VOICE",
-  "metadata": {
-    "rawDocument": "10.666.669",
-    "street": "QUADRA QNM 19 CONJUNTO B LOTE",
-    "number": "3",
-    "complement": "LOJA 02",
-    "neighborhood": "CEILANDIA",
-    "city": "BRASILIA",
-    "state": "DF",
-    "cep": "72.215-192",
-    "email": "carloslopes2014rose@gmail.com",
-    "secondaryPhone": null
+  "agent_id": "agent_...",
+  "agent_phone_number_id": "phnum_...",
+  "to_number": "+5561991640073",
+  "conversation_initiation_client_data": {
+    "dynamic_variables": {
+      "lead_id": "clx_lead_123",
+      "client_id": "clx_client_456",
+      "phone": "5561991640073",
+      "name": "CARLOS ROBERTO LOPES",
+      "raw_document": "10.666.669",
+      "neighborhood": "CEILANDIA",
+      "city": "BRASILIA",
+      "full_address": "QUADRA QNM 19 CONJUNTO B LOTE, 3, LOJA 02, CEILANDIA, BRASILIA - DF, CEP 72.215-192"
+    },
+    "conversation_config_override": {
+      "agent": {
+        "prompt": { "prompt": "(voiceAiPrompt configurado no painel)" },
+        "first_message": "(voiceFirstMessage configurado no painel)"
+      }
+    }
   }
 }`}
             />
 
-            <Typography variant="subtitle2" sx={{ mt: 2 }}>
+            <Alert severity="warning" variant="outlined">
+              Para usar o override de prompt e primeira mensagem configurados no painel, habilite <strong>System Prompt</strong> e <strong>First Message</strong> em <em>Agent → Security → Enable overrides</em> na ElevenLabs. Nas Webhook Tools do agente, aponte para <code>/api/agent/*</code> usando <code>{"{{phone}}"}</code> e header <code>x-webhook-token</code>.
+            </Alert>
+          </Section>
+
+          {/* Post-Call Webhook ElevenLabs */}
+          <Section
+            id="prospeccao-callback"
+            icon={<CallReceivedIcon />}
+            title="Post-Call Webhook da ElevenLabs"
+            description="Endpoint chamado automaticamente pela ElevenLabs ao encerrar a ligação ou em falha de conexão SIP."
+          >
+            <EndpointHeader method="POST" path="/api/webhooks/elevenlabs" auth="public" />
+
+            <Typography variant="subtitle2">URL Completa (configurar na ElevenLabs):</Typography>
+            <CodeBlock language="text" code={elevenLabsWebhookUrl} />
+
+            <Typography variant="subtitle2" sx={{ mt: 1 }}>
+              Segurança & Eventos Suportados:
+            </Typography>
+            <FieldTable
+              rows={[
+                { name: "ElevenLabs-Signature", type: "string", required: "Sim", description: "Assinatura HMAC-SHA256 no formato t=<timestamp>,v0=<hex> validada com elevenLabsWebhookSecret" },
+                { name: "post_call_transcription", type: "event", required: "-", description: "Salva transcrição em Message, duração/resumo em ProspectLead e marca ATENDEU (se houve atendimento)" },
+                { name: "call_initiation_failure", type: "event", required: "-", description: "Marca NAO_ATENDEU e dispara fallback de texto (se configurado)" },
+              ]}
+            />
+          </Section>
+
+          {/* Webhook Fallback de Texto */}
+          <Section
+            id="prospeccao-outbound"
+            icon={<CallMadeIcon />}
+            title="Webhook de Fallback de Texto (prospectingTextWebhookUrl — Opcional)"
+            description="Disparado apenas quando a URL está preenchida nas Configurações e o lead não atende a chamada SIP."
+          >
+            <EndpointHeader method="POST" path="{prospectingTextWebhookUrl}" auth="public" />
+
+            <Typography variant="body2" color="text.secondary">
+              Se <code>outboundWebhookSecret</code> estiver preenchido, a requisição inclui o header{" "}
+              <code>x-webhook-signature</code> com a assinatura HMAC-SHA256 do corpo JSON.
+            </Typography>
+
+            <Typography variant="subtitle2" sx={{ mt: 1 }}>
               Payload para Mensagem de Texto / Fallback (action: "TEXT"):
             </Typography>
             <CodeBlock
@@ -535,68 +586,11 @@ function verifySignature(rawBody, secret, signatureHeader) {
   "name": "CARLOS ROBERTO LOPES",
   "action": "TEXT",
   "metadata": {
-    "reason": "Não atendeu / falha na chamada",
+    "reason": "no_answer",
     "neighborhood": "CEILANDIA",
     "city": "BRASILIA"
   }
 }`}
-            />
-          </Section>
-
-          {/* Webhook de Callback */}
-          <Section
-            id="prospeccao-callback"
-            icon={<CallReceivedIcon />}
-            title="Webhook de Retorno da Telefonia (Callback)"
-            description="Endpoint chamado pelo seu provedor de telefonia assim que a ligação terminar para liberar a próxima chamada."
-          >
-            <EndpointHeader method="POST" path="/api/webhooks/prospeccao/callback" auth="token" />
-
-            <Typography variant="subtitle2">URL Completa:</Typography>
-            <CodeBlock language="text" code={prospectingCallbackUrl} />
-
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>
-              Headers Obrigatórios:
-            </Typography>
-            <FieldTable
-              rows={[
-                { name: "Content-Type", type: "string", required: "Sim", description: "application/json" },
-                { name: "x-webhook-token", type: "string", required: "Sim", description: "AGENT_API_TOKEN ou INBOUND_WEBHOOK_TOKEN" },
-              ]}
-            />
-
-            <Typography variant="subtitle2" sx={{ mt: 2 }}>
-              Body JSON:
-            </Typography>
-            <FieldTable
-              rows={[
-                { name: "phone", type: "string", required: "Sim", description: "Telefone do lead chamado (aceita com ou sem DDI 55)" },
-                { name: "answered", type: "boolean", required: "Sim", description: "true se o lead atendeu a ligação; false se ocupado, desligou ou não atendeu" },
-              ]}
-            />
-
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>Exemplo cURL (Sucesso / Atendeu):</Typography>
-            <CodeBlock
-              language="bash"
-              code={`curl -X POST ${prospectingCallbackUrl} \\
-  -H "Content-Type: application/json" \\
-  -H "x-webhook-token: SEU_AGENT_API_TOKEN" \\
-  -d '{
-    "phone": "5561991640073",
-    "answered": true
-  }'`}
-            />
-
-            <Typography variant="subtitle2" sx={{ mt: 1 }}>Exemplo cURL (Falha / Não Atendeu):</Typography>
-            <CodeBlock
-              language="bash"
-              code={`curl -X POST ${prospectingCallbackUrl} \\
-  -H "Content-Type: application/json" \\
-  -H "x-webhook-token: SEU_AGENT_API_TOKEN" \\
-  -d '{
-    "phone": "5561991640073",
-    "answered": false
-  }'`}
             />
           </Section>
 

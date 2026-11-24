@@ -244,26 +244,103 @@ export const DueDateSchema = z.object({
 
 export type DueDateInput = z.infer<typeof DueDateSchema>;
 
-// Prospecção de Leads
+// Prospecção de Leads (ElevenLabs SIP + Fallback de Texto opcional)
 export interface ProspectingCallJob {
   leadId: string;
 }
 
-export const ProspectingCallbackSchema = z.object({
-  phone: z.string().min(1, "Telefone é obrigatório"),
-  answered: z.boolean({ required_error: "answered (booleano) é obrigatório" }),
-});
-
-export type ProspectingCallbackPayload = z.infer<typeof ProspectingCallbackSchema>;
-
-export interface ProspectingOutboundPayload {
+export interface ProspectingTextFallbackPayload {
   leadId: string;
   clientId: string;
   phone: string;
   name: string;
-  action: "VOICE" | "TEXT";
+  action: "TEXT";
   metadata?: Record<string, unknown>;
 }
+
+export const ElevenLabsTranscriptTurnSchema = z.object({
+  role: z.string(),
+  message: z.string().nullish(),
+  time_in_call_secs: z.number().nullish(),
+});
+
+const ElevenLabsInitClientDataSchema = z
+  .object({
+    dynamic_variables: z.record(z.string(), z.unknown()).nullish(),
+  })
+  .passthrough()
+  .nullish();
+
+export const ElevenLabsPostCallTranscriptionSchema = z.object({
+  type: z.literal("post_call_transcription"),
+  event_timestamp: z.number().nullish(),
+  data: z
+    .object({
+      agent_id: z.string().nullish(),
+      conversation_id: z.string().min(1),
+      status: z.string().nullish(),
+      transcript: z
+        .array(ElevenLabsTranscriptTurnSchema)
+        .nullish()
+        .transform((val) => val ?? []),
+      metadata: z
+        .object({
+          call_duration_secs: z.number().nullish(),
+          termination_reason: z.string().nullish(),
+          phone_call: z
+            .object({
+              external_number: z.string().nullish(),
+              agent_number: z.string().nullish(),
+              call_sid: z.string().nullish(),
+            })
+            .passthrough()
+            .nullish(),
+        })
+        .passthrough()
+        .nullish(),
+      analysis: z
+        .object({
+          call_successful: z.string().nullish(),
+          transcript_summary: z.string().nullish(),
+        })
+        .passthrough()
+        .nullish(),
+      dynamic_variables: z.record(z.string(), z.unknown()).nullish(),
+      conversation_initiation_client_data: ElevenLabsInitClientDataSchema,
+    })
+    .passthrough(),
+});
+
+export const ElevenLabsCallInitiationFailureSchema = z.object({
+  type: z.literal("call_initiation_failure"),
+  event_timestamp: z.number().nullish(),
+  data: z
+    .object({
+      agent_id: z.string().nullish(),
+      conversation_id: z.string().nullish(),
+      error_reason: z.string().nullish(),
+      failure_reason: z.string().nullish(),
+      error: z.string().nullish(),
+      destination_phone_number: z.string().nullish(),
+      dynamic_variables: z.record(z.string(), z.unknown()).nullish(),
+      conversation_initiation_client_data: ElevenLabsInitClientDataSchema,
+      metadata: z.record(z.string(), z.unknown()).nullish(),
+    })
+    .passthrough(),
+});
+
+export const ElevenLabsWebhookEventSchema = z.discriminatedUnion("type", [
+  ElevenLabsPostCallTranscriptionSchema,
+  ElevenLabsCallInitiationFailureSchema,
+]);
+
+export type ElevenLabsPostCallTranscriptionEvent = z.infer<
+  typeof ElevenLabsPostCallTranscriptionSchema
+>;
+export type ElevenLabsCallInitiationFailureEvent = z.infer<
+  typeof ElevenLabsCallInitiationFailureSchema
+>;
+export type ElevenLabsWebhookEvent = z.infer<typeof ElevenLabsWebhookEventSchema>;
 
 export const ProspectLeadSchema = z.object({
   name: z.string().min(1, "Nome é obrigatório"),

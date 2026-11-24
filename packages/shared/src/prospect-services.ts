@@ -6,9 +6,10 @@ import {
   redisConnection,
 } from "./queue";
 import { updateSettings, getSettings } from "./settings";
-import { sendProspectingWebhook } from "./webhooks";
+import { sendProspectingTextWebhook } from "./webhooks";
 import { addSystemLog } from "./logger";
-import type { ProspectLeadInput } from "./types";
+import { saveMessage } from "./messages";
+import type { ElevenLabsWebhookEvent, ProspectLeadInput } from "./types";
 
 /**
  * Normaliza um telefone brasileiro para o formato E.164 sem '+' (com DDI 55).
@@ -418,72 +419,118 @@ export async function pauseProspecting(): Promise<void> {
   });
 }
 
-/**
- * Publica o resultado da ligação de voz no Redis Pub/Sub para destravar o worker.
- */
-export async function publishCallResult(phone: string, answered: boolean): Promise<number> {
-  const normalized = normalizePhone(phone);
-  const payload = JSON.stringify({ phone: normalized, answered });
-  return redisConnection.publish(`prospect:call-result:${normalized}`, payload);
+export interface CallResultMessage {
+  answered: boolean;
+  reason?: string;
+  conversationId?: string | null;
+}
+
+export interface WaitForCallResultOutput {
+  answered: boolean;
+  timeout: boolean;
+  reason?: string;
+  conversationId?: string;
+}
+
+function callResultChannel(leadId: string): string {
+  return `prospect:call-result:${leadId}`;
 }
 
 /**
- * Aguarda no Redis Pub/Sub o resultado de uma ligação com timeout padrão de 120s.
+ * Publica o resultado da ligação de voz no Redis Pub/Sub para destravar o worker.
  */
-export async function waitForCallResult(
-  phone: string,
-  timeoutMs = 120_000
-): Promise<{ answered: boolean; timeout: boolean }> {
-  const normalized = normalizePhone(phone);
-  const channel = `prospect:call-result:${normalized}`;
+export async function publishCallResult(
+  leadId: string,
+  result: CallResultMessage
+): Promise<number> {
+  const payload = JSON.stringify(result);
+  return redisConnection.publish(callResultChannel(leadId), payload);
+}
+
+export interface CallResultWaiter {
+  promise: Promise<WaitForCallResultOutput>;
+  cancel: () => void;
+}
+
+/**
+ * Inscreve-se no canal Redis Pub/Sub antes de disparar a chamada e retorna um handle com `promise` e `cancel()`.
+ * Aguardar a inscrição elimina race conditions com falhas SIP imediatas; `cancel()` evita leak em caso de erro.
+ */
+export async function prepareCallResultWaiter(
+  leadId: string,
+  timeoutMs = 15 * 60 * 1000
+): Promise<CallResultWaiter> {
+  const channel = callResultChannel(leadId);
   const subClient = createRedisClient();
   subClient.on("error", (err) => console.error("[waitForCallResult] Redis sub error:", err));
 
-  return new Promise((resolve) => {
-    let resolved = false;
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let resolvePromise!: (val: WaitForCallResultOutput) => void;
 
-    const timer = setTimeout(() => {
-      if (resolved) return;
-      resolved = true;
-      cleanup();
-      resolve({ answered: false, timeout: true });
-    }, timeoutMs);
-
-    const onMessage = (_chan: string, message: string) => {
-      try {
-        const data = JSON.parse(message);
-        if (data && typeof data.answered === "boolean") {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timer);
-            cleanup();
-            resolve({ answered: data.answered, timeout: false });
-          }
-        }
-      } catch (err) {
-        console.error("[waitForCallResult] Erro ao parsear mensagem do pubsub:", err);
-      }
-    };
-
-    const cleanup = () => {
-      subClient.removeListener("message", onMessage);
-      subClient.unsubscribe(channel).catch(() => {});
-      subClient.quit().catch(() => {
-        subClient.disconnect();
-      });
-    };
-
-    subClient.on("message", onMessage);
-    subClient.subscribe(channel).catch((err) => {
-      console.error("[waitForCallResult] Falha ao se inscrever no canal:", err);
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timer);
-        cleanup();
-        resolve({ answered: false, timeout: false });
-      }
-    });
+  const promise = new Promise<WaitForCallResultOutput>((resolve) => {
+    resolvePromise = resolve;
   });
+
+  const onMessage = (_chan: string, message: string) => {
+    try {
+      const data = JSON.parse(message) as Partial<CallResultMessage> | null;
+      if (data && typeof data.answered === "boolean" && !settled) {
+        settled = true;
+        cleanup();
+        resolvePromise({
+          answered: data.answered,
+          timeout: false,
+          reason: typeof data.reason === "string" ? data.reason : undefined,
+          conversationId:
+            typeof data.conversationId === "string" ? data.conversationId : undefined,
+        });
+      }
+    } catch (err) {
+      console.error("[waitForCallResult] Erro ao parsear mensagem do pubsub:", err);
+    }
+  };
+
+  const cleanup = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    subClient.removeListener("message", onMessage);
+    subClient.unsubscribe(channel).catch(() => {});
+    subClient.quit().catch(() => {
+      subClient.disconnect();
+    });
+  };
+
+  const cancel = () => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    resolvePromise({ answered: false, timeout: false });
+  };
+
+  subClient.on("message", onMessage);
+
+  try {
+    await subClient.subscribe(channel);
+  } catch (err) {
+    console.error("[waitForCallResult] Falha ao se inscrever no canal:", err);
+    settled = true;
+    cleanup();
+    throw err;
+  }
+
+  if (!settled) {
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolvePromise({ answered: false, timeout: true });
+    }, timeoutMs);
+  }
+
+  return { promise, cancel };
 }
 
 /**
@@ -523,4 +570,267 @@ export async function ensureClientForProspect(lead: ProspectLead) {
   }
 
   return client;
+}
+
+/**
+ * Marca o lead como NAO_ATENDEU (somente se ainda estiver EM_CHAMADA) e dispara o fallback de texto (se configurado).
+ */
+export async function finalizeUnansweredProspect(
+  lead: ProspectLead,
+  clientId: string,
+  reason: string,
+  conversationId?: string | null
+): Promise<boolean> {
+  const claimed = await prisma.prospectLead.updateMany({
+    where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
+    data: {
+      status: ProspectStatus.NAO_ATENDEU,
+      notes: reason,
+      ...(conversationId ? { elevenLabsConversationId: conversationId } : {}),
+    },
+  });
+
+  if (claimed.count === 0) {
+    return false;
+  }
+
+  await addSystemLog({
+    level: "warn",
+    source: "prospecting",
+    message: `Lead ${lead.phone} (${lead.name}) NÃO atendeu (${reason}).`,
+    phone: lead.phone,
+  });
+
+  try {
+    const sent = await sendProspectingTextWebhook({
+      leadId: lead.id,
+      clientId,
+      phone: lead.phone,
+      name: lead.name,
+      action: "TEXT",
+      metadata: {
+        reason,
+        secondaryPhone: lead.secondaryPhone,
+        email: lead.email,
+        rawDocument: lead.rawDocument,
+        street: lead.street,
+        number: lead.number,
+        complement: lead.complement,
+        neighborhood: lead.neighborhood,
+        city: lead.city,
+        state: lead.state,
+        cep: lead.cep,
+      },
+    });
+
+    if (sent) {
+      await prisma.prospectLead.update({
+        where: { id: lead.id },
+        data: {
+          status: ProspectStatus.TEXTO_ENVIADO,
+          lastAction: "TEXT",
+          textSentAt: new Date(),
+        },
+      });
+    }
+  } catch (textErr) {
+    console.error(`[prospecting] Falha ao disparar webhook de TEXT para ${lead.phone}:`, textErr);
+    await addSystemLog({
+      level: "error",
+      source: "prospecting",
+      message: `Falha ao disparar webhook de TEXT para ${lead.phone}: ${
+        textErr instanceof Error ? textErr.message : String(textErr)
+      }`,
+      phone: lead.phone,
+    });
+  }
+
+  return true;
+}
+
+function extractDynamicVariables(event: ElevenLabsWebhookEvent): Record<string, unknown> {
+  const fromInit = event.data.conversation_initiation_client_data?.dynamic_variables;
+  const fromTop = event.data.dynamic_variables;
+  return { ...(fromTop ?? {}), ...(fromInit ?? {}) };
+}
+
+async function resolveProspectLeadForWebhook(
+  event: ElevenLabsWebhookEvent,
+  dynamicVars: Record<string, unknown>
+): Promise<ProspectLead | null> {
+  const conversationId = event.data.conversation_id;
+  if (conversationId) {
+    const byConversation = await prisma.prospectLead.findFirst({
+      where: { elevenLabsConversationId: conversationId },
+    });
+    if (byConversation) return byConversation;
+  }
+
+  const leadIdVar = dynamicVars.lead_id;
+  if (typeof leadIdVar === "string" && leadIdVar.trim()) {
+    const byId = await prisma.prospectLead.findUnique({ where: { id: leadIdVar.trim() } });
+    if (byId) return byId;
+  }
+
+  const rawPhoneCandidates: unknown[] = [
+    dynamicVars.phone,
+    event.type === "call_initiation_failure" ? event.data.destination_phone_number : undefined,
+    event.type === "post_call_transcription"
+      ? event.data.metadata?.phone_call?.external_number
+      : undefined,
+  ];
+
+  for (const candidate of rawPhoneCandidates) {
+    const normalized = normalizePhone(candidate);
+    if (!normalized) continue;
+    const byPhone = await prisma.prospectLead.findUnique({ where: { phone: normalized } });
+    if (byPhone) return byPhone;
+  }
+
+  return null;
+}
+
+export interface ElevenLabsWebhookProcessResult {
+  handled: boolean;
+  duplicate?: boolean;
+  leadId?: string;
+  status?: ProspectStatus;
+  reason?: string;
+}
+
+async function handleUnansweredWebhookEvent(
+  lead: ProspectLead,
+  reason: string,
+  conversationId: string | null
+): Promise<ElevenLabsWebhookProcessResult> {
+  const subscribers = await publishCallResult(lead.id, {
+    answered: false,
+    reason,
+    conversationId,
+  });
+
+  if (subscribers === 0 && lead.status === ProspectStatus.EM_CHAMADA) {
+    const client = await ensureClientForProspect(lead);
+    await finalizeUnansweredProspect(lead, client.id, reason, conversationId);
+  }
+
+  return {
+    handled: true,
+    leadId: lead.id,
+    status: ProspectStatus.NAO_ATENDEU,
+    reason,
+  };
+}
+
+/**
+ * Processa eventos recebidos no Post-Call Webhook da ElevenLabs (`post_call_transcription` e `call_initiation_failure`).
+ */
+export async function processElevenLabsWebhookEvent(
+  event: ElevenLabsWebhookEvent
+): Promise<ElevenLabsWebhookProcessResult> {
+  const dynamicVars = extractDynamicVariables(event);
+  const lead = await resolveProspectLeadForWebhook(event, dynamicVars);
+
+  if (!lead) {
+    await addSystemLog({
+      level: "warn",
+      source: "elevenlabs-webhook",
+      message: `Webhook ${event.type} recebido sem lead correspondente (conversation_id=${event.data.conversation_id ?? "n/a"}).`,
+      details: { type: event.type, conversationId: event.data.conversation_id ?? null },
+    });
+    return { handled: false, reason: "lead_not_found" };
+  }
+
+  const conversationId = event.data.conversation_id ?? null;
+
+  if (
+    conversationId &&
+    lead.elevenLabsConversationId === conversationId &&
+    (lead.status === ProspectStatus.ATENDEU ||
+      lead.status === ProspectStatus.NAO_ATENDEU ||
+      lead.status === ProspectStatus.TEXTO_ENVIADO)
+  ) {
+    return { handled: true, duplicate: true, leadId: lead.id, status: lead.status };
+  }
+
+  if (event.type === "call_initiation_failure") {
+    const reason =
+      event.data.error_reason?.trim() ||
+      event.data.failure_reason?.trim() ||
+      event.data.error?.trim() ||
+      "Falha ao iniciar chamada SIP";
+
+    return handleUnansweredWebhookEvent(lead, reason, conversationId);
+  }
+
+  // post_call_transcription
+  const validTurns = event.data.transcript
+    .map((turn) => ({
+      role: turn.role,
+      text: (turn.message ?? "").trim(),
+    }))
+    .filter((turn) => turn.text.length > 0);
+
+  const durationSecs =
+    typeof event.data.metadata?.call_duration_secs === "number"
+      ? Math.round(event.data.metadata.call_duration_secs)
+      : null;
+
+  const summary = event.data.analysis?.transcript_summary?.trim() || null;
+  const answered =
+    event.data.status !== "failed" && (validTurns.length > 0 || (durationSecs ?? 0) > 0);
+
+  if (!answered) {
+    const reason =
+      event.data.metadata?.termination_reason?.trim() || "Chamada encerrada sem atendimento";
+
+    return handleUnansweredWebhookEvent(lead, reason, conversationId);
+  }
+
+  // Reivindica atomicamente o lead antes de gravar mensagens para evitar duplicação em retries concorrentes
+  const claimed = await prisma.prospectLead.updateMany({
+    where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
+    data: {
+      status: ProspectStatus.ATENDEU,
+      elevenLabsConversationId: conversationId,
+      callDurationSecs: durationSecs,
+      callSummary: summary,
+      notes: summary ?? "Lead atendeu a chamada de voz (ElevenLabs).",
+    },
+  });
+
+  if (claimed.count === 0) {
+    return {
+      handled: true,
+      duplicate: true,
+      leadId: lead.id,
+      status: lead.status,
+    };
+  }
+
+  const clientId = lead.clientId ?? (await ensureClientForProspect(lead)).id;
+
+  for (const turn of validTurns) {
+    const role = turn.role === "user" ? "user" : "assistant";
+    await saveMessage(clientId, role, turn.text, "text");
+  }
+
+  await addSystemLog({
+    level: "info",
+    source: "prospecting",
+    message: `Lead ${lead.phone} (${lead.name}) ATENDEU a chamada ElevenLabs (${durationSecs ?? 0}s, ${validTurns.length} turnos salvos).`,
+    phone: lead.phone,
+    details: { conversationId, durationSecs },
+  });
+
+  await publishCallResult(lead.id, {
+    answered: true,
+    conversationId,
+  });
+
+  return {
+    handled: true,
+    leadId: lead.id,
+    status: ProspectStatus.ATENDEU,
+  };
 }

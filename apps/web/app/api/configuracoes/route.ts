@@ -26,11 +26,16 @@ const SettingsUpdateSchema = z.object({
   colorBackground: hexColor.optional(),
   aiPrompt: z.string().optional(),
   voiceAiPrompt: z.string().optional(),
+  voiceFirstMessage: z.string().optional(),
   textAiPrompt: z.string().optional(),
+  elevenLabsApiKey: z.string().optional(),
+  elevenLabsAgentId: z.string().optional(),
+  elevenLabsPhoneNumberId: z.string().optional(),
+  elevenLabsWebhookSecret: z.string().optional(),
   agentWebhookUrl: emptyOrUrl.optional(),
   outboundWebhookUrl: emptyOrUrl.optional(),
   contractWebhookUrl: emptyOrUrl.optional(),
-  prospectingWebhookUrl: emptyOrUrl.optional(),
+  prospectingTextWebhookUrl: emptyOrUrl.optional(),
   outboundWebhookSecret: z.string().nullish(),
   followUpStartTime: timeFormat,
   followUpEndTime: timeFormat,
@@ -43,9 +48,21 @@ const SettingsUpdateSchema = z.object({
   hubsoftServicoStatusId: z.number().int().positive().optional(),
 });
 
+const MASKED_SECRET = "••••••••";
+
+function sanitizeSettingsForResponse<
+  T extends { elevenLabsApiKey?: string; elevenLabsWebhookSecret?: string }
+>(settings: T): T {
+  return {
+    ...settings,
+    elevenLabsApiKey: settings.elevenLabsApiKey ? MASKED_SECRET : "",
+    elevenLabsWebhookSecret: settings.elevenLabsWebhookSecret ? MASKED_SECRET : "",
+  };
+}
+
 export async function GET() {
   const settings = await getSettings();
-  return NextResponse.json(settings);
+  return NextResponse.json(sanitizeSettingsForResponse(settings));
 }
 
 export async function PATCH(req: NextRequest) {
@@ -53,6 +70,14 @@ export async function PATCH(req: NextRequest) {
   const parsed = SettingsUpdateSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const settings = await updateSettings(parsed.data);
-  return NextResponse.json(settings);
+  const updateData = { ...parsed.data };
+  if (updateData.elevenLabsApiKey === MASKED_SECRET) {
+    delete updateData.elevenLabsApiKey;
+  }
+  if (updateData.elevenLabsWebhookSecret === MASKED_SECRET) {
+    delete updateData.elevenLabsWebhookSecret;
+  }
+
+  const settings = await updateSettings(updateData);
+  return NextResponse.json(sanitizeSettingsForResponse(settings));
 }

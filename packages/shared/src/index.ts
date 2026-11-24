@@ -9,3 +9,4 @@ export * from "./agent-auth";
 export * from "./webhooks";
 export * from "./logger";
 export * from "./prospect-services";
+export * from "./elevenlabs";

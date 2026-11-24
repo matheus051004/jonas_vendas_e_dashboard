@@ -20,18 +20,20 @@ pnpm db:seed
 
 Dev (dois processos, rodar em paralelo):
 ```bash
+pnpm dev          # sobe web e worker em paralelo
 pnpm dev:web      # Next.js em http://localhost:3000
-pnpm dev:worker   # consome as filas messages/followups (tsx watch)
+pnpm dev:worker   # consome as filas messages, followups e prospecting (tsx watch)
 ```
 
 Build: `pnpm build` (builda db → shared → web → worker, nessa ordem — `shared` depende de `db`, `web`/`worker` dependem de ambos).
 
-Banco:
+Banco (`scripts/db.sh` carrega `.env` da raiz e cria symlink em `packages/db/.env` se necessário):
 - `pnpm db:generate` — regenera Prisma Client após mudar `packages/db/prisma/schema.prisma`
 - `pnpm db:migrate` — cria/aplica migration (`prisma migrate dev`)
+- `pnpm db:push` — sincroniza schema sem migration (`prisma db push`)
 - `pnpm db:seed` — popula 1 origem, 1 área, 1 plano, Settings default
 
-Não há suíte de testes nem lint configurados no momento além do `next lint` padrão em `apps/web`.
+Não há suíte de testes configurada; lint disponível via `pnpm --filter web lint` (`next lint`).
 
 Testar webhook de entrada:
 ```bash
@@ -68,10 +70,10 @@ packages/
 
 1. Chat externo: `POST /api/webhooks/inbound` com `x-webhook-token` = `INBOUND_WEBHOOK_TOKEN` (público no middleware).
 2. Valida `InboundWebhookSchema` e enfileira na fila `messages`.
-3. Worker: upsert `Client` por telefone, salva `Message` user (áudio: content `"[áudio]"` + bytes), cancela follow-up pendente, `POST agentWebhookUrl` com `event: "message.inbound"` (client, history, text/áudio, metadata).
+3. Worker: upsert `Client` por telefone, salva `Message` user (áudio: transcrição ou `"[áudio]"` + bytes), cancela follow-up pendente, zera `followUpCount`/`followUpPaused` (e move `PAROU_DE_RESPONDER` → `INTERESSADO`), faz `POST agentWebhookUrl` com `event: "message.inbound"` (`client`, `history`, `text`/áudio, `metadata`) e agenda a 1ª tentativa de follow-up (se não estiver em `FECHOU_VENDA`, `DESISTIU` ou `ACHOU_CARO`).
 4. IA externa chama `/api/agent/*` (tools) e `POST /api/webhooks/agent/reply` com a resposta.
 5. Reply: salva `Message` assistant e `POST outboundWebhookUrl` (chat), com HMAC se houver secret.
-6. Follow-ups (1h/2h/3h): job na fila `followups` envia `event: "followup.due"` ao agentWebhookUrl (sem texto fixo). Na 3ª tentativa sem inbound, `stage = DESISTIU`. Job id `followup:<phone>` (reagendar substitui).
+6. Follow-ups (intervalos configuráveis em `Settings.followUpIntervals`, padrão `[60, 120, 180]` min): job na fila `followups` envia `event: "followup.due"` ao `agentWebhookUrl` (sem texto fixo) dentro da janela de horário de SP. Ignorado se `followUpPaused` ou estágio `FECHOU_VENDA`/`DESISTIU`/`ACHOU_CARO`. Na última tentativa sem inbound, mantém `stage = PAROU_DE_RESPONDER`. Job id `followup-<phone>` (reagendar substitui).
 
 ### API do agente (`/api/agent/*`)
 
@@ -86,11 +88,11 @@ Auth: `x-webhook-token` = `AGENT_API_TOKEN` (fallback `INBOUND_WEBHOOK_TOKEN`). 
 | GET | `/api/agent/clients/:phone/messages` | histórico |
 | PATCH | `/api/agent/clients/:phone` | updateClient |
 | POST | `/api/agent/clients/:phone/stage` | setStage |
-| POST | `/api/agent/clients/:phone/contract` | registerContract PF (gera contrato no Hubsoft e dispara webhook; NÃO marca FECHOU_VENDA) |
+| POST | `/api/agent/clients/:phone/contract` | registerContract PF (alias: `/contract-pf`; gera contrato no Hubsoft e dispara webhook; NÃO marca FECHOU_VENDA) |
 | POST | `/api/agent/clients/:phone/contract-pj` | registerContract PJ (gera contrato no Hubsoft e dispara webhook; NÃO marca FECHOU_VENDA) |
-| POST | `/api/agent/clients/:phone/contract-signed` | confirmContractSigned (chamar quando o lead assinar o contrato -> marca FECHOU_VENDA) |
+| POST | `/api/agent/clients/:phone/contract-signed` | confirmContractSigned (alias: `/confirm-signature`; chamar quando o lead assinar o contrato -> marca FECHOU_VENDA) |
 | GET | `/api/agent/origins` | listOrigins |
-| GET | `/api/agent/due-dates` | listDueDates (dias de vencimento 1-31 e seus IDs no Hubsoft) |
+| GET | `/api/agent/due-dates` | listDueDates (alias: `/api/agent/vencimentos`; dias de vencimento 1-31 e seus IDs no Hubsoft) |
 | GET | `/api/agent/areas` | listAreas |
 | GET | `/api/agent/areas/:areaId/plans` | listPlansByArea |
 | GET | `/api/agent/plans/:planId` | getPlanDetails (detalhes completos do plano + imageUrl) |
@@ -98,38 +100,39 @@ Auth: `x-webhook-token` = `AGENT_API_TOKEN` (fallback `INBOUND_WEBHOOK_TOKEN`). 
 
 Serviços em `packages/shared/src/agent-services.ts`.
 
-### Módulo de Prospecção Ativa (Voz e Texto)
+### Módulo de Prospecção Ativa (ElevenLabs SIP Trunk + Fallback de Texto)
 
 - **Importação de Planilha**: Leitura de `.xlsx` (ex: `ceilandia.xlsx`) onde coluna K (11) = telefone principal normalizado com DDI 55, coluna A = Razão Social com extração de CNPJ para `rawDocument`, e colunas C a J = endereço. Duplicados são ignorados no upload.
-- **Fila BullMQ (`prospecting`)**: Concorrência 1 (`concurrency: 1`) e `lockDuration: 180s`.
-- **Criação Prévia do Cliente**: Antes de disparar a chamada, o lead é registrado/atualizado na tabela `Client` (estágio `NOVO_LEAD`), permitindo que a IA consuma ferramentas de venda e registre contrato durante a conversa.
-- **Ciclo de Ligação e Fallback**:
-  1. Worker assina o canal Redis Pub/Sub `prospect:call-result:<phone>` e envia POST para `prospectingWebhookUrl` com `action: "VOICE"`.
-  2. Provedor de telefonia notifica o resultado em `POST /api/webhooks/prospeccao/callback` (`{ phone: "55...", answered: true/false }`).
-  3. Se `answered == true`: marca `status = ATENDEU` e conclui.
-  4. Se `answered == false` ou timeout de 120s: marca `status = NAO_ATENDEU`, envia POST para `prospectingWebhookUrl` com `action: "TEXT"` (*fire-and-forget*), atualiza para `TEXTO_ENVIADO` e libera o próximo lead imediatamente.
+- **Fila BullMQ (`prospecting`)**: Concorrência 1 (`concurrency: 1`) e `lockDuration: 300s`.
+- **Criação Prévia do Cliente**: Antes de disparar a chamada, o lead é registrado/atualizado na tabela `Client` (estágio `NOVO_LEAD`), permitindo que a IA consuma ferramentas `/api/agent/*` e registre contrato durante a conversa.
+- **Ciclo de Ligação (ElevenLabs Agents SIP Trunk) e Fallback**:
+  1. Worker assina o canal Redis Pub/Sub `prospect:call-result:<leadId>` e chama `POST https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call` com `dynamic_variables` do lead e `conversation_config_override` (`voiceAiPrompt`, `voiceFirstMessage`).
+  2. ElevenLabs envia o resultado assinado (`ElevenLabs-Signature` HMAC-SHA256) para `POST /api/webhooks/elevenlabs`.
+  3. Se `post_call_transcription` com atendimento: salva a transcrição na tabela `Message` do cliente, grava duração/resumo no `ProspectLead` e marca `status = ATENDEU`.
+  4. Se `call_initiation_failure`, chamada sem atendimento ou timeout (15 min): marca `status = NAO_ATENDEU` e, caso `prospectingTextWebhookUrl` esteja configurada, envia POST com `action: "TEXT"` (*fire-and-forget*), atualizando para `TEXTO_ENVIADO` antes de liberar o próximo lead.
 - **Endpoints de Controle**:
   - `GET /api/prospeccao` (listagem paginada + métricas)
   - `POST /api/prospeccao` (criação manual de lead)
   - `DELETE /api/prospeccao` (exclusão em lote `{ ids: [...] }`)
+  - `GET / PATCH / DELETE /api/prospeccao/:id` (consulta, edição e exclusão individual de lead)
   - `POST /api/prospeccao/import` (upload de arquivo XLSX)
   - `POST /api/prospeccao/start` (iniciar campanha para todos os pendentes ou seleção)
   - `POST /api/prospeccao/pause` (pausar campanha)
 
 ### Settings
 
-Linha única `Settings` (`id = "default"`): branding + `aiPrompt` + `agentWebhookUrl`, `outboundWebhookUrl`, `contractWebhookUrl`, `outboundWebhookSecret` + `followUpStartTime`/`followUpEndTime` (janela de follow-up em horário de SP). Cache 30s em `packages/shared/src/settings.ts`.
+Linha única `Settings` (`id = "default"`): branding + prompts (`aiPrompt`, `voiceAiPrompt`, `voiceFirstMessage`, `textAiPrompt`) + ElevenLabs (`elevenLabsApiKey`, `elevenLabsAgentId`, `elevenLabsPhoneNumberId`, `elevenLabsWebhookSecret`) + webhooks (`agentWebhookUrl`, `outboundWebhookUrl`, `contractWebhookUrl`, `prospectingTextWebhookUrl`, `outboundWebhookSecret`) + follow-up (`followUpStartTime`, `followUpEndTime` em horário de SP, `followUpIntervals`) + padrões Hubsoft (`hubsoftBaseUrl`, `hubsoftVendedorId`, `hubsoftMotivoContratacaoId`, `hubsoftGruposClienteIds`, `hubsoftGruposServicoIds`, `hubsoftServicoStatusId`) + `isProspectingActive`. Cache 30s em `packages/shared/src/settings.ts`.
 
 ### Autenticação do painel
 
-`ADMIN_USER`/`ADMIN_PASSWORD`, JWT em cookie (`middleware.ts`). Paths sem sessão: `/login`, `/api/branding`, `/api/webhooks/*`, `/api/agent/*`.
+`ADMIN_USER`/`ADMIN_PASSWORD`, JWT em cookie (`middleware.ts`). Paths sem sessão: `/login`, `/api/branding`, `/api/webhooks/*`, `/api/agent/*`, e `GET /api/uploads/*`.
 
 ### Stack por pacote
 
-- `apps/web`: Next.js 15 + MUI v6 + DataGrid + dnd + zod
-- `apps/worker`: Node standalone (`tsx` / `tsc`)
-- `packages/db`: Prisma
-- `packages/shared`: bullmq, ioredis, zod (sem Langchain/OpenAI)
+- `apps/web`: Next.js 15 (React 19) + MUI v6 + DataGrid v7 + `@hello-pangea/dnd` + `zod` + `jose`
+- `apps/worker`: Node standalone (`tsx` / `tsc`) + `bullmq`
+- `packages/db`: Prisma v6
+- `packages/shared`: `bullmq`, `ioredis`, `zod`, `xlsx` (sem Langchain/OpenAI)
 
 Import: `@jonas/db` e `@jonas/shared` (workspace). Preferir dados via `shared` quando já expostos.
 

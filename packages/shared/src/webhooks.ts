@@ -4,7 +4,7 @@ import type {
   AgentWebhookPayload,
   ContractWebhookPayload,
   OutboundMessagePayload,
-  ProspectingOutboundPayload,
+  ProspectingTextFallbackPayload,
 } from "./types";
 
 async function postJson(url: string, secret: string | null | undefined, body: unknown) {
@@ -42,12 +42,14 @@ export async function sendAgentWebhook(payload: AgentWebhookPayload) {
   await postJson(settings.agentWebhookUrl, settings.outboundWebhookSecret, payload);
 }
 
-export async function sendProspectingWebhook(payload: ProspectingOutboundPayload) {
+export async function sendProspectingTextWebhook(
+  payload: ProspectingTextFallbackPayload
+): Promise<boolean> {
   const settings = await getSettings();
-  if (!settings.prospectingWebhookUrl) {
-    throw new Error(
-      "prospectingWebhookUrl não configurado em Settings — configure a URL do webhook de prospecção"
-    );
+  const url = settings.prospectingTextWebhookUrl?.trim();
+  if (!url) {
+    return false;
   }
-  await postJson(settings.prospectingWebhookUrl, settings.outboundWebhookSecret, payload);
+  await postJson(url, settings.outboundWebhookSecret, payload);
+  return true;
 }

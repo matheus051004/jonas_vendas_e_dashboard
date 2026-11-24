@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -30,9 +31,13 @@ import TuneIcon from "@mui/icons-material/Tune";
 import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import SupportAgentIcon from "@mui/icons-material/SupportAgent";
+import PhoneInTalkIcon from "@mui/icons-material/PhoneInTalk";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import AddIcon from "@mui/icons-material/Add";
 import {
   SettingsBrandingSchema,
+  SettingsElevenLabsSchema,
   SettingsWebhooksSchema,
   SettingsPromptSchema,
   SettingsHubsoftSchema,
@@ -54,11 +59,16 @@ interface Settings {
   colorBackground: string;
   aiPrompt: string;
   voiceAiPrompt: string;
+  voiceFirstMessage: string;
   textAiPrompt: string;
+  elevenLabsApiKey: string;
+  elevenLabsAgentId: string;
+  elevenLabsPhoneNumberId: string;
+  elevenLabsWebhookSecret: string;
   agentWebhookUrl: string;
   outboundWebhookUrl: string;
   contractWebhookUrl: string;
-  prospectingWebhookUrl: string;
+  prospectingTextWebhookUrl: string;
   outboundWebhookSecret: string | null;
   followUpStartTime: string | null;
   followUpEndTime: string | null;
@@ -79,7 +89,19 @@ const BRANDING_FIELDS: (keyof Settings)[] = [
   "colorBackground",
 ];
 
-const PROMPT_FIELDS: (keyof Settings)[] = ["aiPrompt", "voiceAiPrompt", "textAiPrompt"];
+const PROMPT_FIELDS: (keyof Settings)[] = [
+  "aiPrompt",
+  "voiceAiPrompt",
+  "voiceFirstMessage",
+  "textAiPrompt",
+];
+
+const ELEVENLABS_FIELDS: (keyof Settings)[] = [
+  "elevenLabsApiKey",
+  "elevenLabsAgentId",
+  "elevenLabsPhoneNumberId",
+  "elevenLabsWebhookSecret",
+];
 
 const FOLLOWUP_FIELDS: (keyof Settings)[] = [
   "followUpStartTime",
@@ -91,7 +113,7 @@ const WEBHOOK_FIELDS: (keyof Settings)[] = [
   "agentWebhookUrl",
   "outboundWebhookUrl",
   "contractWebhookUrl",
-  "prospectingWebhookUrl",
+  "prospectingTextWebhookUrl",
   "outboundWebhookSecret",
 ];
 
@@ -339,6 +361,8 @@ export default function ConfiguracoesPage() {
     message: "",
   });
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
+  const [showElevenLabsKey, setShowElevenLabsKey] = React.useState(false);
+  const [showElevenLabsSecret, setShowElevenLabsSecret] = React.useState(false);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -354,11 +378,16 @@ export default function ConfiguracoesPage() {
           colorBackground: data.colorBackground || "#f5f5f5",
           aiPrompt: data.aiPrompt ?? "",
           voiceAiPrompt: data.voiceAiPrompt ?? "",
+          voiceFirstMessage: data.voiceFirstMessage ?? "",
           textAiPrompt: data.textAiPrompt ?? "",
+          elevenLabsApiKey: data.elevenLabsApiKey ?? "",
+          elevenLabsAgentId: data.elevenLabsAgentId ?? "",
+          elevenLabsPhoneNumberId: data.elevenLabsPhoneNumberId ?? "",
+          elevenLabsWebhookSecret: data.elevenLabsWebhookSecret ?? "",
           agentWebhookUrl: data.agentWebhookUrl ?? "",
           outboundWebhookUrl: data.outboundWebhookUrl ?? "",
           contractWebhookUrl: data.contractWebhookUrl ?? "",
-          prospectingWebhookUrl: data.prospectingWebhookUrl ?? "",
+          prospectingTextWebhookUrl: data.prospectingTextWebhookUrl ?? "",
           outboundWebhookSecret: data.outboundWebhookSecret ?? null,
           followUpStartTime: data.followUpStartTime ?? "",
           followUpEndTime: data.followUpEndTime ?? "",
@@ -472,6 +501,24 @@ export default function ConfiguracoesPage() {
     });
   }
 
+  async function handleSaveElevenLabs() {
+    setFieldErrors({});
+    const payload = sliceFields(ELEVENLABS_FIELDS);
+    const parsed = SettingsElevenLabsSchema.safeParse(payload);
+    if (!parsed.success) {
+      const errors = zodFieldErrors(parsed.error);
+      setFieldErrors(errors);
+      setSnackbar({ open: true, message: firstFieldError(errors) ?? "Verifique os campos da ElevenLabs." });
+      return;
+    }
+
+    const result = await patch(parsed.data);
+    setSnackbar({
+      open: true,
+      message: result.ok ? "Integração ElevenLabs salva com sucesso" : `Erro ao salvar ElevenLabs — ${result.message}`,
+    });
+  }
+
   async function handleSaveWebhooks() {
     setFieldErrors({});
     const payload = sliceFields(WEBHOOK_FIELDS);
@@ -532,7 +579,7 @@ export default function ConfiguracoesPage() {
   const agentPromptUrl = `${origin}/api/agent/prompt`;
   const voicePromptUrl = `${origin}/api/agent/prompt/voice`;
   const textPromptUrl = `${origin}/api/agent/prompt/text`;
-  const prospectingCallbackUrl = `${origin}/api/webhooks/prospeccao/callback`;
+  const elevenLabsWebhookUrl = `${origin}/api/webhooks/elevenlabs`;
 
   return (
     <Box sx={{ maxWidth: 980 }}>
@@ -810,10 +857,32 @@ export default function ConfiguracoesPage() {
 
           {/* IA DE VOZ (PROSPECÇÃO ATIVA POR LIGAÇÃO) */}
           <SectionCard
-            title="2. IA de Voz (Prospecção por Ligação)"
-            description="Persona, script de abordagem telefônica, tom de voz e regras de condução para as chamadas de voz."
+            title="2. IA de Voz (Prospecção Ativa — ElevenLabs Agents)"
+            description="Persona, script de abordagem telefônica e saudação inicial enviados via override em cada chamada SIP."
             badge={<Chip label="Prospecção Ativa (Voz)" color="secondary" variant="outlined" size="small" icon={<RecordVoiceOverIcon />} />}
           >
+            <Alert severity="info" variant="outlined">
+              Variáveis dinâmicas injetadas automaticamente em toda ligação:{" "}
+              <code>{"{{name}}"}</code>, <code>{"{{phone}}"}</code>, <code>{"{{raw_document}}"}</code>,{" "}
+              <code>{"{{neighborhood}}"}</code>, <code>{"{{city}}"}</code>, <code>{"{{full_address}}"}</code>.
+              <br />
+              Lembre-se de ativar <strong>System Prompt</strong> e <strong>First Message</strong> em{" "}
+              <em>Agent → Security → Enable overrides</em> no painel da ElevenLabs.
+            </Alert>
+
+            <TextField
+              label="Saudação Inicial da Ligação (voiceFirstMessage)"
+              fullWidth
+              value={form.voiceFirstMessage}
+              error={!!fieldErrors.voiceFirstMessage}
+              helperText={
+                fieldErrors.voiceFirstMessage ??
+                "Primeira frase falada pelo agente ao o lead atender. Se vazio, usa a saudação padrão configurada na ElevenLabs."
+              }
+              placeholder="Olá {{name}}, tudo bem? Aqui é da Ligtop Fibra, estou falando com o responsável?"
+              onChange={(e) => setForm({ ...form, voiceFirstMessage: e.target.value })}
+            />
+
             <TextField
               label="Endpoint do Prompt de Voz (GET)"
               fullWidth
@@ -834,7 +903,7 @@ export default function ConfiguracoesPage() {
             />
 
             <TextField
-              label="Prompt / Instruções da IA de Voz"
+              label="Prompt / Instruções da IA de Voz (voiceAiPrompt)"
               fullWidth
               multiline
               minRows={6}
@@ -843,9 +912,9 @@ export default function ConfiguracoesPage() {
               error={!!fieldErrors.voiceAiPrompt}
               helperText={
                 fieldErrors.voiceAiPrompt ??
-                `Defina a saudação inicial, tom de voz, argumentação rápida e abordagem telefônica (${form.voiceAiPrompt.length} caracteres).`
+                `Se preenchido, sobrescreve o System Prompt do agente na ElevenLabs (${form.voiceAiPrompt.length} caracteres).`
               }
-              placeholder="Exemplo: Você é o consultor de prospecção por voz da Ligtop Fibra. Ao ser atendido, cumprimente cordialmente, apresente uma oferta especial de internet ultrarrápida para a região e consulte o interesse do titular..."
+              placeholder="Exemplo: Você é o consultor de prospecção por voz da Ligtop Fibra falando com {{name}} ({{neighborhood}}). Apresente os planos disponíveis e use as tools para consultar cobertura e fechar contrato..."
               onChange={(e) => setForm({ ...form, voiceAiPrompt: e.target.value })}
               InputProps={{
                 sx: {
@@ -917,45 +986,124 @@ export default function ConfiguracoesPage() {
       {/* ABA 2: WEBHOOKS & INTEGRAÇÕES */}
       {activeTab === 2 && (
         <Stack spacing={3}>
-          {/* WEBHOOK DE PROSPECÇÃO */}
+          {/* ELEVENLABS AGENTS (SIP TRUNK) */}
           <SectionCard
-            title="Prospecção Ativa (Voz e Texto)"
-            description="Configuração do webhook disparado pelo painel para solicitar ligações e envio de mensagens, além do webhook de retorno."
-            badge={<Chip label="Prospecção" color="secondary" size="small" />}
+            title="ElevenLabs Agents — Ligações de Voz (SIP Trunk)"
+            description="Credenciais da ElevenLabs usadas diretamente pelo worker para iniciar chamadas via SIP Trunk e validar o retorno pós-chamada."
+            badge={<Chip label="Voz Nativa" color="secondary" size="small" icon={<PhoneInTalkIcon />} />}
           >
             <TextField
-              label="URL do Webhook de Prospecção (prospectingWebhookUrl)"
+              label="ElevenLabs API Key (xi-api-key)"
               fullWidth
-              value={form.prospectingWebhookUrl}
-              error={!!fieldErrors.prospectingWebhookUrl}
+              type={showElevenLabsKey && form.elevenLabsApiKey !== "••••••••" ? "text" : "password"}
+              value={form.elevenLabsApiKey}
+              error={!!fieldErrors.elevenLabsApiKey}
               helperText={
-                fieldErrors.prospectingWebhookUrl ??
-                "Recebe POST com { leadId, clientId, phone, name, action: 'VOICE' | 'TEXT', metadata } para efetuar a chamada ou envio."
+                fieldErrors.elevenLabsApiKey ??
+                (form.elevenLabsApiKey === "••••••••"
+                  ? "Chave salva no banco. Digite uma nova chave para substituir ou limpe o campo para remover."
+                  : "Chave da API ElevenLabs (se vazio, utiliza a variável de ambiente ELEVENLABS_API_KEY).")
               }
-              placeholder="https://sua-telefonia.com.br/api/fazer-chamada"
-              onChange={(e) => setForm({ ...form, prospectingWebhookUrl: e.target.value })}
+              placeholder="sk_..."
+              onChange={(e) => setForm({ ...form, elevenLabsApiKey: e.target.value })}
+              InputProps={{
+                endAdornment:
+                  form.elevenLabsApiKey !== "••••••••" ? (
+                    <InputAdornment position="end">
+                      <IconButton
+                        edge="end"
+                        onClick={() => setShowElevenLabsKey((v) => !v)}
+                        aria-label="Mostrar ou ocultar API Key"
+                      >
+                        {showElevenLabsKey ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  ) : undefined,
+              }}
+            />
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Agent ID (agent_id)"
+                  fullWidth
+                  value={form.elevenLabsAgentId}
+                  error={!!fieldErrors.elevenLabsAgentId}
+                  helperText={fieldErrors.elevenLabsAgentId ?? "ID do agente criado no ElevenLabs Agents."}
+                  placeholder="agent_..."
+                  onChange={(e) => setForm({ ...form, elevenLabsAgentId: e.target.value })}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Phone Number ID (SIP Trunk)"
+                  fullWidth
+                  value={form.elevenLabsPhoneNumberId}
+                  error={!!fieldErrors.elevenLabsPhoneNumberId}
+                  helperText={
+                    fieldErrors.elevenLabsPhoneNumberId ??
+                    "ID do número SIP importado em Phone Numbers na ElevenLabs."
+                  }
+                  placeholder="phnum_..."
+                  onChange={(e) => setForm({ ...form, elevenLabsPhoneNumberId: e.target.value })}
+                />
+              </Grid>
+            </Grid>
+
+            <TextField
+              label="Webhook Signing Secret (ElevenLabs)"
+              fullWidth
+              type={showElevenLabsSecret && form.elevenLabsWebhookSecret !== "••••••••" ? "text" : "password"}
+              value={form.elevenLabsWebhookSecret}
+              error={!!fieldErrors.elevenLabsWebhookSecret}
+              helperText={
+                fieldErrors.elevenLabsWebhookSecret ??
+                (form.elevenLabsWebhookSecret === "••••••••"
+                  ? "Secret salvo no banco. Digite um novo para substituir ou limpe o campo para remover."
+                  : "Usado para validar a assinatura HMAC-SHA256 (header ElevenLabs-Signature) nos eventos pós-chamada.")
+              }
+              placeholder="wsec_..."
+              onChange={(e) => setForm({ ...form, elevenLabsWebhookSecret: e.target.value })}
+              InputProps={{
+                endAdornment:
+                  form.elevenLabsWebhookSecret !== "••••••••" ? (
+                    <InputAdornment position="end">
+                      <IconButton
+                        edge="end"
+                        onClick={() => setShowElevenLabsSecret((v) => !v)}
+                        aria-label="Mostrar ou ocultar Secret"
+                      >
+                        {showElevenLabsSecret ? (
+                          <VisibilityOffIcon fontSize="small" />
+                        ) : (
+                          <VisibilityIcon fontSize="small" />
+                        )}
+                      </IconButton>
+                    </InputAdornment>
+                  ) : undefined,
+              }}
             />
 
             <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 2, border: 1, borderColor: "divider" }}>
               <Typography variant="subtitle2" gutterBottom fontWeight={600}>
-                Webhook de Retorno da Telefonia (Callback)
+                Post-Call Webhook da ElevenLabs
               </Typography>
               <Typography variant="body2" color="text.secondary" paragraph>
-                Configure seu sistema de telefonia para enviar um POST ao término da ligação para liberar a próxima chamada na fila (concorrência 1):
+                Cadastre esta URL nas configurações de Webhooks da ElevenLabs e habilite os eventos{" "}
+                <code>post_call_transcription</code> e <code>call_initiation_failure</code>:
               </Typography>
 
               <TextField
-                label="URL do Webhook de Callback (fixa)"
+                label="URL do Post-Call Webhook (fixa)"
                 fullWidth
                 size="small"
-                value={prospectingCallbackUrl}
+                value={elevenLabsWebhookUrl}
                 disabled
-                sx={{ mb: 1.5 }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
                       <Tooltip title="Copiar URL">
-                        <IconButton edge="end" onClick={() => void copyUrl(prospectingCallbackUrl)}>
+                        <IconButton edge="end" onClick={() => void copyUrl(elevenLabsWebhookUrl)}>
                           <ContentCopyIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
@@ -963,11 +1111,33 @@ export default function ConfiguracoesPage() {
                   ),
                 }}
               />
-
-              <Typography variant="caption" color="text.secondary" display="block">
-                Payload esperado no callback: <code>{JSON.stringify({ phone: "61991640073", answered: true })}</code>. Header: <code>x-webhook-token</code> (opcional se validado).
-              </Typography>
             </Box>
+
+            <Stack direction="row" justifyContent="flex-end">
+              <Button variant="contained" onClick={() => void handleSaveElevenLabs()}>
+                Salvar integração ElevenLabs
+              </Button>
+            </Stack>
+          </SectionCard>
+
+          {/* FALLBACK DE TEXTO DA PROSPECÇÃO */}
+          <SectionCard
+            title="Fallback de Texto da Prospecção (Opcional)"
+            description="Webhook acionado apenas quando a ligação SIP não é atendida ou falha e você deseja disparar uma abordagem por texto."
+            badge={<Chip label="Fallback Texto" color="info" variant="outlined" size="small" />}
+          >
+            <TextField
+              label="URL do Webhook de Fallback de Texto (prospectingTextWebhookUrl)"
+              fullWidth
+              value={form.prospectingTextWebhookUrl}
+              error={!!fieldErrors.prospectingTextWebhookUrl}
+              helperText={
+                fieldErrors.prospectingTextWebhookUrl ??
+                "Opcional. Se preenchido, recebe POST com { leadId, clientId, phone, name, action: 'TEXT', metadata } quando o lead não atender."
+              }
+              placeholder="https://seu-disparador.com.br/api/enviar-texto"
+              onChange={(e) => setForm({ ...form, prospectingTextWebhookUrl: e.target.value })}
+            />
           </SectionCard>
 
           {/* WEBHOOKS DE ATENDIMENTO E CHAT */}

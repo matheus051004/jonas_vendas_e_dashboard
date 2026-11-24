@@ -102,13 +102,21 @@ export const SettingsWebhooksSchema = z.object({
   agentWebhookUrl: emptyOrUrl,
   outboundWebhookUrl: emptyOrUrl,
   contractWebhookUrl: emptyOrUrl,
-  prospectingWebhookUrl: emptyOrUrl,
+  prospectingTextWebhookUrl: emptyOrUrl,
   outboundWebhookSecret: z.string().nullable(),
+});
+
+export const SettingsElevenLabsSchema = z.object({
+  elevenLabsApiKey: z.string(),
+  elevenLabsAgentId: z.string(),
+  elevenLabsPhoneNumberId: z.string(),
+  elevenLabsWebhookSecret: z.string(),
 });
 
 export const SettingsPromptSchema = z.object({
   aiPrompt: z.string(),
   voiceAiPrompt: z.string().optional(),
+  voiceFirstMessage: z.string().optional(),
   textAiPrompt: z.string().optional(),
 });
 
