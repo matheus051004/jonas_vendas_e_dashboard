@@ -17,7 +17,7 @@ export interface ElevenLabsOutboundCallResult {
  */
 export function formatE164Phone(phone: string): string {
   const normalized = normalizePhone(phone);
-  if (!normalized) {
+  if (!normalized || normalized.length < 10 || normalized.length > 15) {
     throw new Error("Telefone do lead inválido para chamada SIP.");
   }
   return `+${normalized}`;
@@ -67,7 +67,7 @@ export async function startElevenLabsSipOutboundCall(
   lead: ProspectLead,
   clientId: string
 ): Promise<ElevenLabsOutboundCallResult> {
-  const settings = await getSettings();
+  const settings = await getSettings({ bypassCache: true });
   const apiKey = (settings.elevenLabsApiKey || process.env.ELEVENLABS_API_KEY || "").trim();
   const agentId = settings.elevenLabsAgentId.trim();
   const phoneNumberId = settings.elevenLabsPhoneNumberId.trim();

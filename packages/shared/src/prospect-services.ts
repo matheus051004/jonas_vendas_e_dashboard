@@ -11,25 +11,56 @@ import { addSystemLog } from "./logger";
 import { saveMessage } from "./messages";
 import type { ElevenLabsWebhookEvent, ProspectLeadInput } from "./types";
 
-/**
- * Normaliza um telefone brasileiro para o formato E.164 sem '+' (com DDI 55).
- * Ex: '61991640073' -> '5561991640073'
- * Ex: '(61) 98438-0780' -> '5561984380780'
- */
-export function normalizePhone(raw: unknown): string {
-  if (raw === null || raw === undefined) return "";
-  const clean = String(raw).replace(/\D/g, "");
+function normalizeSinglePhoneToken(raw: string): string {
+  let clean = raw.replace(/\D/g, "");
   if (!clean) return "";
 
-  // Se já tem 55 e tem 12 ou 13 dígitos
+  // Remove prefixo internacional 00 (ex.: 005561991640073 -> 5561991640073)
+  if (clean.startsWith("00") && clean.length >= 12) {
+    clean = clean.slice(2);
+  }
+
+  // Remove zero à esquerda do DDD brasileiro (ex.: 061991640073 -> 61991640073)
+  if (clean.startsWith("0") && (clean.length === 11 || clean.length === 12)) {
+    clean = clean.slice(1);
+  }
+
+  // Se já tem DDI 55 com 12 (fixo) ou 13 (celular) dígitos
   if (clean.startsWith("55") && (clean.length === 12 || clean.length === 13)) {
     return clean;
   }
-  // Se tem DDD (2 dígitos) + 8 ou 9 dígitos (total 10 ou 11)
-  if (clean.length === 10 || clean.length === 11) {
+
+  // Se tem DDD (2 dígitos) + 8 ou 9 dígitos (total 10 ou 11) sem zero inicial
+  if (!clean.startsWith("0") && (clean.length === 10 || clean.length === 11)) {
     return `55${clean}`;
   }
-  return clean;
+
+  // Outros formatos internacionais válidos (E.164: 10 a 15 dígitos, sem zero inicial e sem 55 malformado)
+  if (!clean.startsWith("0") && !clean.startsWith("55") && clean.length >= 10 && clean.length <= 15) {
+    return clean;
+  }
+
+  return "";
+}
+
+/**
+ * Normaliza um telefone brasileiro para o formato E.164 sem '+' (com DDI 55).
+ * Aceita células com múltiplos números separados por '/', ';', ',' ou quebra de linha.
+ * Ex: '61991640073' -> '5561991640073'
+ * Ex: '061 98438-0780' -> '5561984380780'
+ */
+export function normalizePhone(raw: unknown): string {
+  if (raw === null || raw === undefined) return "";
+  const str = String(raw).trim();
+  if (!str) return "";
+
+  const candidates = str.split(/[/;,|\n]+/);
+  for (const candidate of candidates) {
+    const normalized = normalizeSinglePhoneToken(candidate);
+    if (normalized) return normalized;
+  }
+
+  return "";
 }
 
 /**
@@ -60,8 +91,122 @@ export interface ImportResult {
   skippedInvalid: number;
 }
 
+interface XlsxColumnMap {
+  name: number;
+  document: number | null;
+  streetType: number | null;
+  street: number | null;
+  number: number | null;
+  complement: number | null;
+  neighborhood: number | null;
+  city: number | null;
+  state: number | null;
+  cep: number | null;
+  phone: number;
+  secondaryPhone: number | null;
+  email: number | null;
+}
+
+const DEFAULT_XLSX_COLUMNS: XlsxColumnMap = {
+  name: 0,
+  document: null,
+  streetType: 2,
+  street: 3,
+  number: 4,
+  complement: 5,
+  neighborhood: 6,
+  city: 7,
+  state: 8,
+  cep: 9,
+  phone: 10,
+  secondaryPhone: 11,
+  email: 12,
+};
+
+function normalizeHeaderCell(val: unknown): string {
+  return String(val ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function detectXlsxColumns(firstRow: unknown[]): { columns: XlsxColumnMap; startRow: number } {
+  // Se a coluna padrão de telefone na linha 0 já contém um número válido, a planilha não tem cabeçalho
+  if (normalizePhone(firstRow[DEFAULT_XLSX_COLUMNS.phone])) {
+    return { columns: DEFAULT_XLSX_COLUMNS, startRow: 0 };
+  }
+
+  const headers = firstRow.map(normalizeHeaderCell);
+  const used = new Set<number>();
+
+  const takeCol = (patterns: RegExp[]): number | null => {
+    for (let i = 0; i < headers.length; i++) {
+      if (used.has(i)) continue;
+      const h = headers[i];
+      // Cabeçalhos reais são curtos e não carregam CPF/CNPJ/telefones/CEPs numéricos
+      if (!h || h.length > 40 || h.replace(/\D/g, "").length >= 4) continue;
+      if (patterns.some((p) => p.test(h))) {
+        used.add(i);
+        return i;
+      }
+    }
+    return null;
+  };
+
+  const phoneIdx = takeCol([
+    /\b(telefone|celular|whatsapp|fone|phone|tel)\b/,
+    /^ddd\s*tel/,
+  ]);
+
+  if (phoneIdx === null) {
+    return { columns: DEFAULT_XLSX_COLUMNS, startRow: 0 };
+  }
+
+  const secondaryPhoneIdx = takeCol([
+    /\b(telefone\s*2|celular\s*2|fone\s*2|tel\s*2|secundario|alternativo|telefone|celular|fone)\b/,
+  ]);
+
+  const matchedNameIdx = takeCol([/\b(razao\s*social|nome|empresa|cliente|lead|fantasia)\b/]);
+  const fallbackNameIdx = !used.has(0) ? 0 : headers.findIndex((_, idx) => !used.has(idx));
+  const nameIdx = matchedNameIdx ?? (fallbackNameIdx >= 0 ? fallbackNameIdx : 0);
+  used.add(nameIdx);
+
+  const documentIdx = takeCol([/\b(cnpj|cpf|documento|doc)\b/]);
+  const streetTypeIdx = takeCol([/\b(tipo\s*logradouro|tipo\s*endereco|tipo)\b/]);
+  const streetIdx = takeCol([/\b(logradouro|endereco|rua|avenida)\b/]);
+  const numberIdx = takeCol([/\b(numero|num|nro)\b/]);
+  const complementIdx = takeCol([/\b(complemento|compl)\b/]);
+  const neighborhoodIdx = takeCol([/\b(bairro|setor)\b/]);
+  const cityIdx = takeCol([/\b(cidade|municipio|localidade)\b/]);
+  const stateIdx = takeCol([/^(uf|estado)$/]);
+  const cepIdx = takeCol([/\bcep\b/]);
+  const emailIdx = takeCol([/\b(e\s*mail|email|correio)\b/]);
+
+  return {
+    columns: {
+      name: nameIdx,
+      document: documentIdx,
+      streetType: streetTypeIdx,
+      street: streetIdx,
+      number: numberIdx,
+      complement: complementIdx,
+      neighborhood: neighborhoodIdx,
+      city: cityIdx,
+      state: stateIdx,
+      cep: cepIdx,
+      phone: phoneIdx,
+      secondaryPhone: secondaryPhoneIdx,
+      email: emailIdx,
+    },
+    startRow: 1,
+  };
+}
+
 /**
  * Lê uma planilha XLSX em buffer e importa leads para a tabela ProspectLead.
+ * Detecta cabeçalhos automaticamente quando presentes ou usa o layout padrão (ceilandia.xlsx).
  * Ignora duplicados (mesmo telefone) já cadastrados ou repetidos na mesma planilha.
  */
 export async function importLeadsFromXlsxBuffer(buffer: Buffer): Promise<ImportResult> {
@@ -87,6 +232,10 @@ export async function importLeadsFromXlsxBuffer(buffer: Buffer): Promise<ImportR
     return { total: 0, imported: 0, skippedDuplicates: 0, skippedInvalid: 0 };
   }
 
+  const { columns, startRow } = detectXlsxColumns(rows[0] ?? []);
+  const cell = (row: unknown[], idx: number | null) =>
+    idx !== null && idx >= 0 && idx < row.length ? row[idx] : "";
+
   const seenInSheet = new Set<string>();
   const toInsert: Array<{
     name: string;
@@ -108,16 +257,15 @@ export async function importLeadsFromXlsxBuffer(buffer: Buffer): Promise<ImportR
   let skippedInvalid = 0;
   let totalProcessed = 0;
 
-  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+  for (let rowIndex = startRow; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex];
     if (!Array.isArray(row) || row.length === 0) continue;
 
-    // Coluna K (índice 10) = Telefone Principal
-    const rawPhone = row[10];
+    const rawPhone = cell(row, columns.phone);
     const phone = normalizePhone(rawPhone);
 
-    // Se for cabeçalho (ex: texto 'telefone', 'celular') ou vazio
-    if (!phone || phone.length < 10) {
+    // Se for cabeçalho sem detecção (linha 0) ou inválido/vazio
+    if (!phone) {
       if (rowIndex === 0) continue;
       skippedInvalid++;
       continue;
@@ -132,29 +280,26 @@ export async function importLeadsFromXlsxBuffer(buffer: Buffer): Promise<ImportR
 
     seenInSheet.add(phone);
 
-    // Coluna A (índice 0) = Razão Social / Nome
-    const colA = row[0];
-    const { name: parsedName, document: parsedDoc } = cleanNameAndDocument(colA);
+    const rawNameCell = cell(row, columns.name);
+    const { name: parsedName, document: parsedDoc } = cleanNameAndDocument(rawNameCell);
+    const explicitDoc = String(cell(row, columns.document) || "").trim() || null;
     const finalName = parsedName || `Lead ${phone}`;
 
-    // Colunas de Endereço
-    const tipoLogradouro = String(row[2] || "").trim(); // Col C
-    const logradouro = String(row[3] || "").trim();     // Col D
+    const tipoLogradouro = String(cell(row, columns.streetType) || "").trim();
+    const logradouro = String(cell(row, columns.street) || "").trim();
     const street = [tipoLogradouro, logradouro].filter(Boolean).join(" ") || null;
 
-    const number = String(row[4] || "").trim() || null;       // Col E
-    const complement = String(row[5] || "").trim() || null;   // Col F
-    const neighborhood = String(row[6] || "").trim() || null; // Col G
-    const city = String(row[7] || "").trim() || null;         // Col H
-    const state = String(row[8] || "").trim() || null;        // Col I
-    const cep = String(row[9] || "").trim() || null;          // Col J
+    const number = String(cell(row, columns.number) || "").trim() || null;
+    const complement = String(cell(row, columns.complement) || "").trim() || null;
+    const neighborhood = String(cell(row, columns.neighborhood) || "").trim() || null;
+    const city = String(cell(row, columns.city) || "").trim() || null;
+    const state = String(cell(row, columns.state) || "").trim() || null;
+    const cep = String(cell(row, columns.cep) || "").trim() || null;
 
-    // Coluna L (índice 11) = Telefone Secundário
-    const rawPhone2 = row[11];
+    const rawPhone2 = cell(row, columns.secondaryPhone);
     const secondaryPhone = rawPhone2 ? normalizePhone(rawPhone2) || null : null;
 
-    // Coluna M (índice 12) = Email
-    const emailRaw = String(row[12] || "").trim();
+    const emailRaw = String(cell(row, columns.email) || "").trim();
     const email = emailRaw && emailRaw.includes("@") ? emailRaw : null;
 
     toInsert.push({
@@ -162,7 +307,7 @@ export async function importLeadsFromXlsxBuffer(buffer: Buffer): Promise<ImportR
       phone,
       secondaryPhone,
       email,
-      rawDocument: parsedDoc,
+      rawDocument: explicitDoc ?? parsedDoc,
       street,
       number,
       complement,
@@ -272,7 +417,7 @@ export async function getProspectMetrics() {
     prisma.prospectLead.count({ where: { status: ProspectStatus.NAO_ATENDEU } }),
     prisma.prospectLead.count({ where: { status: ProspectStatus.TEXTO_ENVIADO } }),
     prisma.prospectLead.count({ where: { status: ProspectStatus.ERRO } }),
-    getSettings(),
+    getSettings({ bypassCache: true }),
   ]);
 
   return {
@@ -290,7 +435,7 @@ export async function getProspectMetrics() {
 export async function createProspectLead(data: ProspectLeadInput) {
   const phone = normalizePhone(data.phone);
   if (!phone) {
-    throw new Error("Telefone inválido.");
+    throw new Error("Telefone inválido. Informe DDD + número (ex.: 61991640073).");
   }
 
   const existing = await prisma.prospectLead.findUnique({ where: { phone } });
@@ -302,7 +447,7 @@ export async function createProspectLead(data: ProspectLeadInput) {
     data: {
       name: data.name.trim(),
       phone,
-      secondaryPhone: data.secondaryPhone ? normalizePhone(data.secondaryPhone) : null,
+      secondaryPhone: data.secondaryPhone ? normalizePhone(data.secondaryPhone) || null : null,
       email: data.email?.trim() || null,
       rawDocument: data.rawDocument?.trim() || null,
       street: data.street?.trim() || null,
@@ -327,11 +472,18 @@ export async function updateProspectLead(
   if (data.name !== undefined) updateData.name = data.name.trim();
   if (data.phone !== undefined) {
     const p = normalizePhone(data.phone);
-    if (!p) throw new Error("Telefone inválido.");
+    if (!p) throw new Error("Telefone inválido. Informe DDD + número (ex.: 61991640073).");
+    const duplicate = await prisma.prospectLead.findFirst({
+      where: { phone: p, id: { not: id } },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new Error("Já existe outro lead cadastrado com este telefone.");
+    }
     updateData.phone = p;
   }
   if (data.secondaryPhone !== undefined) {
-    updateData.secondaryPhone = data.secondaryPhone ? normalizePhone(data.secondaryPhone) : null;
+    updateData.secondaryPhone = data.secondaryPhone ? normalizePhone(data.secondaryPhone) || null : null;
   }
   if (data.email !== undefined) updateData.email = data.email?.trim() || null;
   if (data.rawDocument !== undefined) updateData.rawDocument = data.rawDocument?.trim() || null;
@@ -351,12 +503,36 @@ export async function updateProspectLead(
   });
 }
 
+function prospectJobId(leadId: string): string {
+  return `prospect-${leadId}`;
+}
+
+async function removeQueuedProspectJobs(ids: string[]) {
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const job = await prospectingQueue.getJob(prospectJobId(id));
+        if (job) {
+          const state = await job.getState();
+          if (state === "waiting" || state === "delayed" || state === "prioritized") {
+            await job.remove();
+          }
+        }
+      } catch {
+        // Ignora caso o job já esteja ativo ou removido
+      }
+    })
+  );
+}
+
 export async function deleteProspectLead(id: string) {
+  await removeQueuedProspectJobs([id]);
   return prisma.prospectLead.delete({ where: { id } });
 }
 
 export async function deleteManyProspectLeads(ids: string[]) {
   if (!ids || ids.length === 0) return { count: 0 };
+  await removeQueuedProspectJobs(ids);
   return prisma.prospectLead.deleteMany({
     where: { id: { in: ids } },
   });
@@ -364,18 +540,21 @@ export async function deleteManyProspectLeads(ids: string[]) {
 
 /**
  * Inicia a campanha de prospecção.
- * Se leadIds forem fornecidos, enfileira apenas estes; caso contrário, enfileira todos com status PENDENTE.
+ * Se leadIds forem fornecidos, enfileira apenas os elegíveis dessa seleção; caso contrário, enfileira todos com status PENDENTE.
+ * Usa jobId determinístico (`prospect-<leadId>`) para evitar duplicações na fila.
  */
-export async function startProspecting(leadIds?: string[]): Promise<{ queuedCount: number }> {
-  await updateSettings({ isProspectingActive: true });
-  await prospectingQueue.resume();
-
-  const where: Record<string, unknown> = {};
-  if (leadIds && leadIds.length > 0) {
-    where.id = { in: leadIds };
-  } else {
-    where.status = ProspectStatus.PENDENTE;
-  }
+export async function startProspecting(
+  leadIds?: string[]
+): Promise<{ queuedCount: number; alreadyQueuedCount: number }> {
+  const isSpecificSelection = !!(leadIds && leadIds.length > 0);
+  const where: Record<string, unknown> = isSpecificSelection
+    ? {
+        id: { in: leadIds },
+        status: {
+          notIn: [ProspectStatus.ATENDEU, ProspectStatus.TEXTO_ENVIADO, ProspectStatus.EM_CHAMADA],
+        },
+      }
+    : { status: ProspectStatus.PENDENTE };
 
   const leads = await prisma.prospectLead.findMany({
     where,
@@ -383,40 +562,80 @@ export async function startProspecting(leadIds?: string[]): Promise<{ queuedCoun
     orderBy: { createdAt: "asc" },
   });
 
-  for (const lead of leads) {
-    await prospectingQueue.add(
-      "call",
-      { leadId: lead.id },
-      {
-        jobId: `prospect-${lead.id}-${Date.now()}`,
-        removeOnComplete: true,
-        removeOnFail: true,
-      }
+  const existingJobs = await prospectingQueue.getJobs(["waiting", "paused", "active", "delayed"]);
+  const existingJobIds = new Set(existingJobs.map((j) => j.id).filter((id): id is string => Boolean(id)));
+
+  const newLeads = leads.filter((lead) => !existingJobIds.has(prospectJobId(lead.id)));
+  const alreadyQueuedCount = leads.length - newLeads.length;
+
+  if (newLeads.length === 0 && alreadyQueuedCount === 0) {
+    return { queuedCount: 0, alreadyQueuedCount: 0 };
+  }
+
+  // Ativa a flag ANTES de enfileirar para evitar que o worker pegue o 1º job e aborte por ler false
+  await updateSettings({ isProspectingActive: true });
+
+  if (newLeads.length > 0) {
+    await prospectingQueue.addBulk(
+      newLeads.map((lead) => ({
+        name: "call",
+        data: { leadId: lead.id },
+        opts: {
+          jobId: prospectJobId(lead.id),
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      }))
     );
   }
 
+  await prospectingQueue.resume();
+
   await addSystemLog({
     level: "info",
     source: "prospecting",
-    message: `Prospecção iniciada. ${leads.length} leads enfileirados.`,
-    details: { count: leads.length, specificSelection: !!(leadIds && leadIds.length > 0) },
+    message: `Prospecção iniciada. ${newLeads.length} lead(s) enfileirado(s)${
+      alreadyQueuedCount > 0 ? ` (${alreadyQueuedCount} já na fila)` : ""
+    }.`,
+    details: { count: newLeads.length, alreadyQueuedCount, specificSelection: isSpecificSelection },
   });
 
-  return { queuedCount: leads.length };
+  return { queuedCount: newLeads.length, alreadyQueuedCount };
 }
 
 /**
- * Pausa a campanha de prospecção e pausa a fila BullMQ.
+ * Pausa a campanha de prospecção, pausa a fila BullMQ e limpa jobs aguardando (sem interromper chamada em andamento).
  */
-export async function pauseProspecting(): Promise<void> {
+export async function pauseProspecting(reason?: string): Promise<void> {
   await updateSettings({ isProspectingActive: false });
   await prospectingQueue.pause();
+  await prospectingQueue.drain(true);
 
   await addSystemLog({
     level: "info",
     source: "prospecting",
-    message: "Prospecção pausada pelo operador.",
+    message: reason || "Prospecção pausada pelo operador.",
   });
+}
+
+/**
+ * Desativa automaticamente `isProspectingActive` quando não restam jobs aguardando na fila.
+ */
+export async function deactivateProspectingIfIdle(): Promise<boolean> {
+  const counts = await prospectingQueue.getJobCounts("waiting", "paused", "delayed");
+  const remaining = (counts.waiting ?? 0) + (counts.paused ?? 0) + (counts.delayed ?? 0);
+  if (remaining > 0) return false;
+
+  const settings = await getSettings({ bypassCache: true });
+  if (!settings.isProspectingActive) return false;
+
+  await updateSettings({ isProspectingActive: false });
+  await addSystemLog({
+    level: "info",
+    source: "prospecting",
+    message: "Campanha de prospecção concluída automaticamente (fila vazia).",
+  });
+  return true;
 }
 
 export interface CallResultMessage {
@@ -534,15 +753,13 @@ export async function prepareCallResultWaiter(
 }
 
 /**
- * Garante a criação ou atualização do Cliente na tabela Client antes de disparar o contato.
- * Assim as ferramentas de vendas da IA têm o cliente pronto no banco.
+ * Garante a criação do Cliente na tabela Client antes de disparar o contato,
+ * preservando nome/metadados de clientes já existentes no CRM.
  */
 export async function ensureClientForProspect(lead: ProspectLead) {
-  const client = await prisma.client.upsert({
+  let client = await prisma.client.upsert({
     where: { phone: lead.phone },
-    update: {
-      name: lead.name,
-    },
+    update: {},
     create: {
       phone: lead.phone,
       name: lead.name,
@@ -561,6 +778,13 @@ export async function ensureClientForProspect(lead: ProspectLead) {
       },
     },
   });
+
+  if (!client.name?.trim() && lead.name.trim()) {
+    client = await prisma.client.update({
+      where: { id: client.id },
+      data: { name: lead.name.trim() },
+    });
+  }
 
   if (lead.clientId !== client.id) {
     await prisma.prospectLead.update({
@@ -743,13 +967,8 @@ export async function processElevenLabsWebhookEvent(
 
   const conversationId = event.data.conversation_id ?? null;
 
-  if (
-    conversationId &&
-    lead.elevenLabsConversationId === conversationId &&
-    (lead.status === ProspectStatus.ATENDEU ||
-      lead.status === ProspectStatus.NAO_ATENDEU ||
-      lead.status === ProspectStatus.TEXTO_ENVIADO)
-  ) {
+  // Idempotência: ignora retries quando o lead não está mais EM_CHAMADA (inclusive call_initiation_failure sem conversationId)
+  if (lead.status !== ProspectStatus.EM_CHAMADA) {
     return { handled: true, duplicate: true, leadId: lead.id, status: lead.status };
   }
 
@@ -768,8 +987,11 @@ export async function processElevenLabsWebhookEvent(
     .map((turn) => ({
       role: turn.role,
       text: (turn.message ?? "").trim(),
+      timeInCallSecs: typeof turn.time_in_call_secs === "number" ? turn.time_in_call_secs : null,
     }))
     .filter((turn) => turn.text.length > 0);
+
+  const userTurns = validTurns.filter((turn) => turn.role === "user");
 
   const durationSecs =
     typeof event.data.metadata?.call_duration_secs === "number"
@@ -777,12 +999,20 @@ export async function processElevenLabsWebhookEvent(
       : null;
 
   const summary = event.data.analysis?.transcript_summary?.trim() || null;
-  const answered =
-    event.data.status !== "failed" && (validTurns.length > 0 || (durationSecs ?? 0) > 0);
+  const terminationReason = event.data.metadata?.termination_reason?.trim() || "";
+  const isVoicemail = /voicemail|caixa\s*postal|answering.?machine/i.test(terminationReason);
+
+  // Só considera atendido quando não falhou, não caiu em caixa postal e houve ao menos 1 fala do lead
+  const answered = event.data.status !== "failed" && !isVoicemail && userTurns.length > 0;
 
   if (!answered) {
-    const reason =
-      event.data.metadata?.termination_reason?.trim() || "Chamada encerrada sem atendimento";
+    const reason = isVoicemail
+      ? "Caixa postal detectada"
+      : event.data.status === "failed"
+        ? terminationReason || "Chamada encerrada com falha"
+        : terminationReason
+          ? `Sem resposta do lead (${terminationReason})`
+          : "Lead não falou na chamada (desligou ou sem resposta)";
 
     return handleUnansweredWebhookEvent(lead, reason, conversationId);
   }
@@ -810,9 +1040,23 @@ export async function processElevenLabsWebhookEvent(
 
   const clientId = lead.clientId ?? (await ensureClientForProspect(lead)).id;
 
-  for (const turn of validTurns) {
+  const nowMs = Date.now();
+  const baseMs =
+    durationSecs != null && durationSecs > 0
+      ? nowMs - durationSecs * 1000
+      : nowMs - validTurns.length * 1000;
+  let lastMs = baseMs - 1;
+
+  for (let i = 0; i < validTurns.length; i++) {
+    const turn = validTurns[i]!;
     const role = turn.role === "user" ? "user" : "assistant";
-    await saveMessage(clientId, role, turn.text, "text");
+    const candidateMs =
+      turn.timeInCallSecs !== null
+        ? baseMs + Math.round(turn.timeInCallSecs * 1000)
+        : baseMs + i * 1000;
+    const timestampMs = Math.max(lastMs + 1, candidateMs);
+    lastMs = timestampMs;
+    await saveMessage(clientId, role, turn.text, "text", undefined, new Date(timestampMs));
   }
 
   await addSystemLog({

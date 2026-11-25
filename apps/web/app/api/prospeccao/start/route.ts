@@ -3,13 +3,29 @@ import { startProspecting } from "@jonas/shared";
 import { z } from "zod";
 
 const StartBodySchema = z.object({
-  leadIds: z.array(z.string()).optional(),
+  leadIds: z.array(z.string().min(1)).min(1, "Selecione ao menos um lead válido").optional(),
 });
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
+  const rawText = await req.text();
+  let body: unknown = {};
+  if (rawText.trim()) {
+    try {
+      body = JSON.parse(rawText);
+    } catch {
+      return NextResponse.json({ ok: false, error: "JSON inválido" }, { status: 400 });
+    }
+  }
+
   const parsed = StartBodySchema.safeParse(body);
-  const leadIds = parsed.success ? parsed.data.leadIds : undefined;
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, error: "Parâmetros inválidos para iniciar prospecção.", details: parsed.error.flatten() },
+      { status: 400 }
+    );
+  }
+
+  const leadIds = parsed.data.leadIds;
 
   try {
     const result = await startProspecting(leadIds);
@@ -17,6 +33,6 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[api/prospeccao/start] Erro ao iniciar prospecção:", err);
     const message = err instanceof Error ? err.message : "Erro ao iniciar prospecção";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

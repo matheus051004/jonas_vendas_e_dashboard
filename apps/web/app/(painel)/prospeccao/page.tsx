@@ -68,8 +68,16 @@ interface ProspectLead {
   callDurationSecs: number | null;
   callSummary: string | null;
   clientId: string | null;
+  client?: {
+    id: string;
+    stage: string;
+    currentProvider: string | null;
+    currentPrice: string | number | null;
+  } | null;
   createdAt: string;
 }
+
+type ProspectStatusKey = ProspectLead["status"];
 
 interface Metrics {
   total: number;
@@ -83,15 +91,36 @@ interface Metrics {
 }
 
 const STATUS_CONFIG: Record<
-  string,
+  ProspectStatusKey,
   { label: string; color: "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning"; icon: React.ReactElement }
 > = {
   PENDENTE: { label: "Pendente", color: "warning", icon: <HourglassEmptyIcon fontSize="small" /> },
   EM_CHAMADA: { label: "Em Chamada", color: "info", icon: <PhoneInTalkIcon fontSize="small" /> },
-  ATENDEU: { label: "Atendeu (Venda)", color: "success", icon: <CheckCircleOutlineIcon fontSize="small" /> },
+  ATENDEU: { label: "Atendeu", color: "success", icon: <CheckCircleOutlineIcon fontSize="small" /> },
   NAO_ATENDEU: { label: "Não Atendeu", color: "error", icon: <PhoneMissedIcon fontSize="small" /> },
   TEXTO_ENVIADO: { label: "Texto Enviado", color: "secondary", icon: <SmsIcon fontSize="small" /> },
   ERRO: { label: "Erro", color: "error", icon: <ErrorOutlineIcon fontSize="small" /> },
+};
+
+const CRM_STAGE_LABELS: Record<string, string> = {
+  NOVO_LEAD: "Novo lead",
+  INTERESSADO: "Interessado",
+  PAROU_DE_RESPONDER: "Sem resposta",
+  ACHOU_CARO: "Achou caro",
+  FECHOU_VENDA: "Fechou venda",
+  DESISTIU: "Desistiu",
+};
+
+const CRM_STAGE_COLORS: Record<
+  string,
+  "default" | "primary" | "success" | "warning" | "error" | "info"
+> = {
+  NOVO_LEAD: "info",
+  INTERESSADO: "primary",
+  PAROU_DE_RESPONDER: "warning",
+  ACHOU_CARO: "error",
+  FECHOU_VENDA: "success",
+  DESISTIU: "default",
 };
 
 function MetricCard({
@@ -192,6 +221,7 @@ export default function ProspeccaoPage() {
     state: "",
     cep: "",
     notes: "",
+    status: "PENDENTE" as ProspectStatusKey,
   });
   const [leadFieldErrors, setLeadFieldErrors] = React.useState<FieldErrors>({});
 
@@ -205,8 +235,9 @@ export default function ProspeccaoPage() {
     skippedInvalid: number;
   } | null>(null);
 
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
-  const [leadToDelete, setLeadToDelete] = React.useState<ProspectLead | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<
+    { type: "single"; lead: ProspectLead } | { type: "bulk"; ids: string[] } | null
+  >(null);
 
   const [campaignActionLoading, setCampaignActionLoading] = React.useState(false);
 
@@ -215,8 +246,19 @@ export default function ProspeccaoPage() {
     message: "",
   });
 
-  // Debounce na busca
+  const isInitialSearchMount = React.useRef(true);
+
+  function handleSelectStatusFilter(nextStatus: string) {
+    setStatusFilter(nextStatus);
+    setPaginationModel((prev) => ({ ...prev, page: 0 }));
+  }
+
+  // Debounce na busca (ignora disparo redundante na montagem inicial)
   React.useEffect(() => {
+    if (isInitialSearchMount.current) {
+      isInitialSearchMount.current = false;
+      return;
+    }
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm);
       setPaginationModel((prev) => ({ ...prev, page: 0 }));
@@ -268,10 +310,16 @@ export default function ProspeccaoPage() {
     try {
       if (metrics.isProspectingActive) {
         const res = await fetch("/api/prospeccao/pause", { method: "POST" });
-        const data = await res.json();
-        if (data.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
           setMetrics((prev) => ({ ...prev, isProspectingActive: false }));
           setSnackbar({ open: true, message: "Campanha pausada com sucesso.", severity: "info" });
+        } else {
+          setSnackbar({
+            open: true,
+            message: data.error || "Não foi possível pausar a campanha.",
+            severity: "error",
+          });
         }
       } else {
         const res = await fetch("/api/prospeccao/start", {
@@ -279,13 +327,27 @@ export default function ProspeccaoPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
-        const data = await res.json();
-        if (data.ok) {
-          setMetrics((prev) => ({ ...prev, isProspectingActive: true }));
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          if (data.queuedCount > 0 || data.alreadyQueuedCount > 0) {
+            setMetrics((prev) => ({ ...prev, isProspectingActive: true }));
+            setSnackbar({
+              open: true,
+              message: `Prospecção iniciada! ${data.queuedCount} lead(s) adicionado(s) à fila.`,
+              severity: "success",
+            });
+          } else {
+            setSnackbar({
+              open: true,
+              message: "Não há leads pendentes para iniciar a prospecção.",
+              severity: "info",
+            });
+          }
+        } else {
           setSnackbar({
             open: true,
-            message: `Prospecção iniciada! ${data.queuedCount} leads adicionados à fila.`,
-            severity: "success",
+            message: data.error || "Não foi possível iniciar a prospecção.",
+            severity: "error",
           });
         }
       }
@@ -307,16 +369,36 @@ export default function ProspeccaoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leadIds: ids }),
       });
-      const data = await res.json();
-      if (data.ok) {
-        setMetrics((prev) => ({ ...prev, isProspectingActive: true }));
-        setSnackbar({
-          open: true,
-          message: `${data.queuedCount} lead(s) adicionado(s) à fila de chamadas.`,
-          severity: "success",
-        });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        if (data.queuedCount > 0) {
+          setMetrics((prev) => ({ ...prev, isProspectingActive: true }));
+          setSnackbar({
+            open: true,
+            message: `${data.queuedCount} lead(s) adicionado(s) à fila de chamadas.`,
+            severity: "success",
+          });
+        } else if (data.alreadyQueuedCount > 0) {
+          setSnackbar({
+            open: true,
+            message: "Os leads selecionados já estão na fila de chamadas.",
+            severity: "info",
+          });
+        } else {
+          setSnackbar({
+            open: true,
+            message: "Nenhum lead elegível na seleção (já atendido, em chamada ou com texto enviado).",
+            severity: "info",
+          });
+        }
         if (!overrideIds) setSelectedIds([]);
         await loadData();
+      } else {
+        setSnackbar({
+          open: true,
+          message: data.error || "Falha ao disparar leads selecionados.",
+          severity: "error",
+        });
       }
     } catch {
       setSnackbar({ open: true, message: "Falha ao disparar leads selecionados.", severity: "error" });
@@ -325,25 +407,10 @@ export default function ProspeccaoPage() {
     }
   }
 
-  async function handleDeleteSelected() {
-    if (selectedIds.length === 0) return;
-    if (!confirm(`Deseja realmente excluir os ${selectedIds.length} leads selecionados?`)) return;
-
-    try {
-      const res = await fetch("/api/prospeccao", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setSnackbar({ open: true, message: `${data.count} leads excluídos com sucesso.`, severity: "success" });
-        setSelectedIds([]);
-        await loadData();
-      }
-    } catch {
-      setSnackbar({ open: true, message: "Erro ao excluir leads selecionados.", severity: "error" });
-    }
+  function handleRequestDeleteSelected() {
+    const ids = selectedIds.map(String);
+    if (ids.length === 0) return;
+    setDeleteTarget({ type: "bulk", ids });
   }
 
   function handleOpenCreateModal() {
@@ -362,6 +429,7 @@ export default function ProspeccaoPage() {
       state: "DF",
       cep: "",
       notes: "",
+      status: "PENDENTE",
     });
     setLeadFieldErrors({});
     setLeadModalOpen(true);
@@ -383,6 +451,7 @@ export default function ProspeccaoPage() {
       state: lead.state ?? "",
       cep: lead.cep ?? "",
       notes: lead.notes ?? "",
+      status: lead.status,
     });
     setLeadFieldErrors({});
     setLeadModalOpen(true);
@@ -399,8 +468,9 @@ export default function ProspeccaoPage() {
     const isEdit = !!editingLead;
     const url = isEdit ? `/api/prospeccao/${editingLead.id}` : "/api/prospeccao";
     const method = isEdit ? "PATCH" : "POST";
+    const payload = isEdit ? { ...parsed.data, status: leadForm.status } : parsed.data;
 
-    const result = await submitJson(url, { method, body: parsed.data });
+    const result = await submitJson(url, { method, body: payload });
     if (!result.ok) {
       setLeadFieldErrors(result.fieldErrors);
       setSnackbar({
@@ -420,19 +490,37 @@ export default function ProspeccaoPage() {
     await loadData();
   }
 
-  async function handleDeleteSingle() {
-    if (!leadToDelete) return;
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
     try {
-      const res = await fetch(`/api/prospeccao/${leadToDelete.id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.ok) {
-        setSnackbar({ open: true, message: "Lead excluído com sucesso", severity: "success" });
-        setDeleteConfirmOpen(false);
-        setLeadToDelete(null);
-        await loadData();
+      if (deleteTarget.type === "single") {
+        const res = await fetch(`/api/prospeccao/${deleteTarget.lead.id}`, { method: "DELETE" });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          setSnackbar({ open: true, message: "Lead excluído com sucesso", severity: "success" });
+          setDeleteTarget(null);
+          await loadData();
+        } else {
+          setSnackbar({ open: true, message: data.error || "Falha ao excluir lead.", severity: "error" });
+        }
+      } else {
+        const res = await fetch("/api/prospeccao", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: deleteTarget.ids }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.ok) {
+          setSnackbar({ open: true, message: `${data.count} lead(s) excluído(s) com sucesso.`, severity: "success" });
+          setSelectedIds([]);
+          setDeleteTarget(null);
+          await loadData();
+        } else {
+          setSnackbar({ open: true, message: data.error || "Erro ao excluir leads selecionados.", severity: "error" });
+        }
       }
     } catch {
-      setSnackbar({ open: true, message: "Falha ao excluir lead.", severity: "error" });
+      setSnackbar({ open: true, message: "Falha ao excluir lead(s).", severity: "error" });
     }
   }
 
@@ -547,19 +635,47 @@ export default function ProspeccaoPage() {
     {
       field: "status",
       headerName: "Status",
-      width: 170,
+      width: 240,
       renderCell: (params) => {
-        const status = params.value as string;
-        const conf = STATUS_CONFIG[status] || { label: status, color: "default", icon: undefined };
+        const lead = params.row as ProspectLead;
+        const conf = STATUS_CONFIG[lead.status] || { label: lead.status, color: "default", icon: undefined };
+        const crmStage = lead.client?.stage;
+        const detailNote = lead.callSummary || lead.notes;
         return (
-          <Chip
-            size="small"
-            variant="filled"
-            color={conf.color}
-            icon={conf.icon}
-            label={conf.label}
-            sx={{ fontWeight: 600 }}
-          />
+          <Box sx={{ py: 0.75, minWidth: 0, width: "100%" }}>
+            <Stack direction="row" spacing={0.5} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Chip
+                size="small"
+                variant="filled"
+                color={conf.color}
+                icon={conf.icon}
+                label={conf.label}
+                sx={{ fontWeight: 600 }}
+              />
+              {crmStage && (
+                <Chip
+                  size="small"
+                  variant="outlined"
+                  color={CRM_STAGE_COLORS[crmStage] ?? "default"}
+                  label={CRM_STAGE_LABELS[crmStage] ?? crmStage}
+                  sx={{ height: 22, fontSize: 11 }}
+                />
+              )}
+            </Stack>
+            {detailNote && (
+              <Tooltip title={detailNote}>
+                <Typography
+                  variant="caption"
+                  color={lead.status === "ERRO" ? "error.main" : "text.secondary"}
+                  display="block"
+                  noWrap
+                  sx={{ mt: 0.25 }}
+                >
+                  {detailNote}
+                </Typography>
+              </Tooltip>
+            )}
+          </Box>
         );
       },
     },
@@ -603,20 +719,27 @@ export default function ProspeccaoPage() {
       sortable: false,
       renderCell: (params) => {
         const lead = params.row as ProspectLead;
+        const callDisabled =
+          campaignActionLoading ||
+          lead.status === "ATENDEU" ||
+          lead.status === "TEXTO_ENVIADO" ||
+          lead.status === "EM_CHAMADA";
         return (
           <Stack direction="row" spacing={0.5}>
             <Tooltip
               title={
-                lead.status === "ATENDEU" || lead.status === "TEXTO_ENVIADO"
-                  ? "Lead já atendido ou texto enviado"
-                  : "Disparar Ligação Avulsa"
+                lead.status === "EM_CHAMADA"
+                  ? "Ligação em andamento"
+                  : lead.status === "ATENDEU" || lead.status === "TEXTO_ENVIADO"
+                    ? "Lead já atendido ou texto enviado"
+                    : "Disparar Ligação Avulsa"
               }
             >
               <span>
                 <IconButton
                   size="small"
                   color="primary"
-                  disabled={lead.status === "ATENDEU" || lead.status === "TEXTO_ENVIADO"}
+                  disabled={callDisabled}
                   onClick={() => void handleStartSelected([lead.id])}
                 >
                   <PhoneCallbackIcon fontSize="small" />
@@ -632,10 +755,7 @@ export default function ProspeccaoPage() {
               <IconButton
                 size="small"
                 color="error"
-                onClick={() => {
-                  setLeadToDelete(lead);
-                  setDeleteConfirmOpen(true);
-                }}
+                onClick={() => setDeleteTarget({ type: "single", lead })}
               >
                 <DeleteOutlineIcon fontSize="small" />
               </IconButton>
@@ -698,65 +818,75 @@ export default function ProspeccaoPage() {
       </Box>
 
       {/* Cards de Métricas */}
-      <Grid container spacing={2} mb={3}>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+      <Grid container spacing={2} mb={3} columns={{ xs: 12, sm: 12, lg: 14 }}>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
           <MetricCard
             title="Total de Leads"
             count={metrics.total}
             color="#1565c0"
             icon={<PhoneInTalkIcon />}
             active={statusFilter === "TODOS"}
-            onClick={() => setStatusFilter("TODOS")}
+            onClick={() => handleSelectStatusFilter("TODOS")}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
           <MetricCard
             title="Pendentes"
             count={metrics.pending}
             color="#ed6c02"
             icon={<HourglassEmptyIcon />}
             active={statusFilter === "PENDENTE"}
-            onClick={() => setStatusFilter("PENDENTE")}
+            onClick={() => handleSelectStatusFilter("PENDENTE")}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
           <MetricCard
             title="Em Chamada"
             count={metrics.calling}
             color="#0288d1"
             icon={<PhoneInTalkIcon />}
             active={statusFilter === "EM_CHAMADA"}
-            onClick={() => setStatusFilter("EM_CHAMADA")}
+            onClick={() => handleSelectStatusFilter("EM_CHAMADA")}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
           <MetricCard
             title="Atendeu"
             count={metrics.answered}
             color="#2e7d32"
             icon={<CheckCircleOutlineIcon />}
             active={statusFilter === "ATENDEU"}
-            onClick={() => setStatusFilter("ATENDEU")}
+            onClick={() => handleSelectStatusFilter("ATENDEU")}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
           <MetricCard
             title="Não Atendeu"
             count={metrics.notAnswered}
             color="#d32f2f"
             icon={<PhoneMissedIcon />}
             active={statusFilter === "NAO_ATENDEU"}
-            onClick={() => setStatusFilter("NAO_ATENDEU")}
+            onClick={() => handleSelectStatusFilter("NAO_ATENDEU")}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 4, md: 2 }}>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
           <MetricCard
             title="Texto Enviado"
             count={metrics.textSent}
             color="#7b1fa2"
             icon={<SmsIcon />}
             active={statusFilter === "TEXTO_ENVIADO"}
-            onClick={() => setStatusFilter("TEXTO_ENVIADO")}
+            onClick={() => handleSelectStatusFilter("TEXTO_ENVIADO")}
+          />
+        </Grid>
+        <Grid size={{ xs: 6, sm: 4, lg: 2 }}>
+          <MetricCard
+            title="Erros"
+            count={metrics.error}
+            color="#c62828"
+            icon={<ErrorOutlineIcon />}
+            active={statusFilter === "ERRO"}
+            onClick={() => handleSelectStatusFilter("ERRO")}
           />
         </Grid>
       </Grid>
@@ -783,10 +913,7 @@ export default function ProspeccaoPage() {
             <Select
               size="small"
               value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPaginationModel((prev) => ({ ...prev, page: 0 }));
-              }}
+              onChange={(e) => handleSelectStatusFilter(e.target.value)}
               sx={{ minWidth: 160 }}
             >
               <MenuItem value="TODOS">Todos os Status</MenuItem>
@@ -826,7 +953,7 @@ export default function ProspeccaoPage() {
                 variant="outlined"
                 color="error"
                 startIcon={<DeleteOutlineIcon />}
-                onClick={() => void handleDeleteSelected()}
+                onClick={handleRequestDeleteSelected}
               >
                 Excluir
               </Button>
@@ -851,7 +978,7 @@ export default function ProspeccaoPage() {
           onRowSelectionModelChange={setSelectedIds}
           disableRowSelectionOnClick
           autoHeight
-          rowHeight={64}
+          rowHeight={72}
           sx={{
             border: "none",
             "& .MuiDataGrid-cell:focus": { outline: "none" },
@@ -865,7 +992,7 @@ export default function ProspeccaoPage() {
         <DialogTitle sx={{ fontWeight: 700 }}>Importar Planilha de Leads (.xlsx)</DialogTitle>
         <DialogContent>
           <DialogContentText paragraph>
-            Selecione a planilha no formato padrão (ex: <code>ceilandia.xlsx</code>). A coluna K (11) será usada para capturar o telefone, a coluna A para o nome/razão social e as demais para o endereço.
+            Envie uma planilha Excel (.xlsx ou .xls). As colunas são detectadas automaticamente quando houver cabeçalho (ex.: Nome/Razão Social, Telefone, Endereço, Bairro, E-mail), mantendo compatibilidade com o layout padrão (<code>ceilandia.xlsx</code>).
           </DialogContentText>
 
           <Box
@@ -1057,6 +1184,26 @@ export default function ProspeccaoPage() {
               />
             </Grid>
 
+            {editingLead && (
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  select
+                  label="Status na Prospecção"
+                  fullWidth
+                  value={leadForm.status}
+                  onChange={(e) => setLeadForm({ ...leadForm, status: e.target.value as ProspectStatusKey })}
+                  helperText="Permite redefinir leads com erro ou travados para Pendente."
+                >
+                  <MenuItem value="PENDENTE">Pendente</MenuItem>
+                  <MenuItem value="EM_CHAMADA">Em Chamada</MenuItem>
+                  <MenuItem value="ATENDEU">Atendeu</MenuItem>
+                  <MenuItem value="NAO_ATENDEU">Não Atendeu</MenuItem>
+                  <MenuItem value="TEXTO_ENVIADO">Texto Enviado</MenuItem>
+                  <MenuItem value="ERRO">Erro</MenuItem>
+                </TextField>
+              </Grid>
+            )}
+
             <Grid size={{ xs: 12 }}>
               <TextField
                 label="Observações / Notas internas"
@@ -1097,17 +1244,28 @@ export default function ProspeccaoPage() {
       </Dialog>
 
       {/* MODAL: Confirmação de Exclusão */}
-      <Dialog open={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)}>
-        <DialogTitle>Excluir Lead de Prospecção</DialogTitle>
+      <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
+        <DialogTitle>
+          {deleteTarget?.type === "bulk" ? "Excluir Leads Selecionados" : "Excluir Lead de Prospecção"}
+        </DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Tem certeza de que deseja excluir o lead <strong>{leadToDelete?.name}</strong> ({leadToDelete?.phone})?
-            Essa ação não pode ser desfeita.
+            {deleteTarget?.type === "bulk" ? (
+              <>
+                Tem certeza de que deseja excluir os <strong>{deleteTarget.ids.length}</strong> leads selecionados?
+                Essa ação não pode ser desfeita.
+              </>
+            ) : (
+              <>
+                Tem certeza de que deseja excluir o lead <strong>{deleteTarget?.lead.name}</strong> (
+                {deleteTarget?.lead.phone})? Essa ação não pode ser desfeita.
+              </>
+            )}
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancelar</Button>
-          <Button variant="contained" color="error" onClick={() => void handleDeleteSingle()}>
+          <Button onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+          <Button variant="contained" color="error" onClick={() => void handleConfirmDelete()}>
             Excluir
           </Button>
         </DialogActions>
@@ -1116,10 +1274,18 @@ export default function ProspeccaoPage() {
       {/* Feedback Snackbar */}
       <Snackbar
         open={snackbar.open}
-        autoHideDuration={3000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.message}
-      />
+        autoHideDuration={4500}
+        onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+      >
+        <Alert
+          onClose={() => setSnackbar((prev) => ({ ...prev, open: false }))}
+          severity={snackbar.severity ?? "info"}
+          variant="filled"
+          sx={{ width: "100%" }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }

@@ -14,7 +14,12 @@ async function postJson(url: string, secret: string | null | undefined, body: un
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (secret) headers["x-webhook-signature"] = createHmac("sha256", secret).update(payload).digest("hex");
 
-  const res = await fetch(url, { method: "POST", headers, body: payload });
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: payload,
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!res.ok) throw new Error(`Webhook ${url} respondeu ${res.status}`);
 }
 
@@ -45,7 +50,7 @@ export async function sendAgentWebhook(payload: AgentWebhookPayload) {
 export async function sendProspectingTextWebhook(
   payload: ProspectingTextFallbackPayload
 ): Promise<boolean> {
-  const settings = await getSettings();
+  const settings = await getSettings({ bypassCache: true });
   const url = settings.prospectingTextWebhookUrl?.trim();
   if (!url) {
     return false;

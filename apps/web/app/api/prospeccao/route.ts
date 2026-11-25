@@ -15,8 +15,10 @@ const DeleteManySchema = z.object({
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const page = parseInt(searchParams.get("page") || "1", 10);
-  const pageSize = parseInt(searchParams.get("pageSize") || "25", 10);
+  const parsedPage = Number.parseInt(searchParams.get("page") || "1", 10);
+  const parsedPageSize = Number.parseInt(searchParams.get("pageSize") || "25", 10);
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const pageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0 ? parsedPageSize : 25;
   const search = searchParams.get("search") || undefined;
   const statusParam = searchParams.get("status");
 

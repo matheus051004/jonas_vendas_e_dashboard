@@ -13,7 +13,7 @@ const SUPPORTED_EVENT_TYPES = new Set([
 
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const settings = await getSettings();
+  const settings = await getSettings({ bypassCache: true });
   const secret = (
     settings.elevenLabsWebhookSecret ||
     process.env.ELEVENLABS_WEBHOOK_SECRET ||

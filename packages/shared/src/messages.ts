@@ -41,7 +41,8 @@ export async function saveMessage(
   role: "user" | "assistant" | "system",
   content: string,
   kind: "text" | "audio" = "text",
-  audio?: SaveMessageAudio
+  audio?: SaveMessageAudio,
+  createdAt?: Date
 ) {
   const text = typeof content === "string" ? content : String(content ?? "");
   const audioBytes = audio?.data ? Uint8Array.from(audio.data) : undefined;
@@ -54,6 +55,7 @@ export async function saveMessage(
       kind,
       audioData: audioBytes,
       audioMimeType: audio?.mimeType ?? undefined,
+      ...(createdAt ? { createdAt } : {}),
     },
   });
 

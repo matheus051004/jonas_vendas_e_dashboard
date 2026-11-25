@@ -7,8 +7,8 @@ const SETTINGS_ID = "default";
 let cached: { value: Settings; expiresAt: number } | null = null;
 const TTL_MS = 30_000;
 
-export async function getSettings(): Promise<Settings> {
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
+export async function getSettings(options?: { bypassCache?: boolean }): Promise<Settings> {
+  if (!options?.bypassCache && cached && cached.expiresAt > Date.now()) return cached.value;
 
   const settings = await prisma.settings.upsert({
     where: { id: SETTINGS_ID },

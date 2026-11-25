@@ -18,6 +18,8 @@ import {
   startElevenLabsSipOutboundCall,
   finalizeUnansweredProspect,
   prepareCallResultWaiter,
+  pauseProspecting,
+  deactivateProspectingIfIdle,
   DEFAULT_FOLLOW_UP_INTERVALS,
   type IncomingMessageJob,
   type FollowUpJob,
@@ -187,28 +189,103 @@ const followUpsWorker = new Worker<FollowUpJob>(
 );
 
 const PROSPECT_CALL_TIMEOUT_MS = 15 * 60 * 1000;
+const STUCK_CALL_THRESHOLD_MS = 20 * 60 * 1000;
+
+async function recoverStuckProspectingCalls() {
+  try {
+    const cutoff = new Date(Date.now() - STUCK_CALL_THRESHOLD_MS);
+    const recovered = await prisma.prospectLead.updateMany({
+      where: {
+        status: ProspectStatus.EM_CHAMADA,
+        OR: [{ calledAt: { lt: cutoff } }, { calledAt: null }],
+      },
+      data: {
+        status: ProspectStatus.ERRO,
+        notes: "Chamada interrompida sem retorno da ElevenLabs (recuperado pelo worker).",
+      },
+    });
+    if (recovered.count > 0) {
+      console.warn(`[prospecting] ${recovered.count} lead(s) presos em EM_CHAMADA marcados como ERRO.`);
+      await addSystemLog({
+        level: "warn",
+        source: "prospecting",
+        message: `${recovered.count} lead(s) presos em EM_CHAMADA por mais de 20 min foram marcados como ERRO.`,
+      });
+    }
+  } catch (err) {
+    console.error("[prospecting] Falha ao recuperar chamadas travadas:", err);
+  }
+}
+
+void recoverStuckProspectingCalls();
+setInterval(() => {
+  void recoverStuckProspectingCalls();
+}, 5 * 60 * 1000).unref();
 
 const prospectingWorker = new Worker<ProspectingCallJob>(
   QUEUE_NAMES.prospecting,
   async (job) => {
     const { leadId } = job.data;
-    const settings = await getSettings();
-    if (!settings.isProspectingActive) {
-      console.log(`[prospecting] Campanha pausada. Job ${job.id} para lead ${leadId} abortado.`);
-      return;
-    }
-
-    const lead = await prisma.prospectLead.findUnique({ where: { id: leadId } });
-    if (!lead) return;
-    if (lead.status === ProspectStatus.ATENDEU || lead.status === ProspectStatus.TEXTO_ENVIADO) {
-      return;
-    }
-
     try {
-      const client = await ensureClientForProspect(lead);
+      const settings = await getSettings({ bypassCache: true });
+      if (!settings.isProspectingActive) {
+        console.log(`[prospecting] Campanha pausada. Job ${job.id} para lead ${leadId} abortado.`);
+        return;
+      }
 
-      await prisma.prospectLead.update({
-        where: { id: lead.id },
+      if (!isWithinFollowUpWindow(new Date(), settings.followUpStartTime, settings.followUpEndTime)) {
+        const start = settings.followUpStartTime ?? "08:00";
+        const end = settings.followUpEndTime ?? "20:00";
+        console.log(
+          `[prospecting] Fora do horário permitido (${start} às ${end} SP). Pausando campanha automaticamente.`
+        );
+        await pauseProspecting(
+          `Prospecção pausada automaticamente: fora do horário permitido (${start} às ${end} SP).`
+        );
+        return;
+      }
+
+      const lead = await prisma.prospectLead.findUnique({ where: { id: leadId } });
+      if (!lead) return;
+      if (
+        lead.status === ProspectStatus.ATENDEU ||
+        lead.status === ProspectStatus.TEXTO_ENVIADO ||
+        lead.status === ProspectStatus.EM_CHAMADA
+      ) {
+        return;
+      }
+
+      const client = await ensureClientForProspect(lead);
+      if (client.stage === SaleStage.FECHOU_VENDA) {
+        await prisma.prospectLead.updateMany({
+          where: {
+            id: lead.id,
+            status: {
+              notIn: [ProspectStatus.ATENDEU, ProspectStatus.TEXTO_ENVIADO, ProspectStatus.EM_CHAMADA],
+            },
+          },
+          data: {
+            status: ProspectStatus.ERRO,
+            notes: "Ignorado: cliente já está em FECHOU_VENDA no CRM.",
+          },
+        });
+        await addSystemLog({
+          level: "warn",
+          source: "prospecting",
+          message: `Lead ${lead.phone} (${lead.name}) ignorado na prospecção: cliente já está em FECHOU_VENDA.`,
+          phone: lead.phone,
+        });
+        return;
+      }
+
+      // Reivindica atomicamente o lead para EM_CHAMADA evitando ligações duplicadas concorrentes
+      const claimed = await prisma.prospectLead.updateMany({
+        where: {
+          id: lead.id,
+          status: {
+            notIn: [ProspectStatus.ATENDEU, ProspectStatus.TEXTO_ENVIADO, ProspectStatus.EM_CHAMADA],
+          },
+        },
         data: {
           status: ProspectStatus.EM_CHAMADA,
           lastAction: "VOICE",
@@ -219,70 +296,79 @@ const prospectingWorker = new Worker<ProspectingCallJob>(
           callSummary: null,
         },
       });
-
-      await addSystemLog({
-        level: "info",
-        source: "prospecting",
-        message: `Iniciando chamada SIP ElevenLabs para ${lead.phone} (${lead.name})`,
-        phone: lead.phone,
-      });
-
-      // Assina Redis Pub/Sub (aguardando SUBSCRIBE) antes de disparar a chamada para evitar race condition
-      const waiter = await prepareCallResultWaiter(lead.id, PROSPECT_CALL_TIMEOUT_MS);
+      if (claimed.count === 0) {
+        return;
+      }
 
       try {
-        const call = await startElevenLabsSipOutboundCall(lead, client.id);
+        await addSystemLog({
+          level: "info",
+          source: "prospecting",
+          message: `Iniciando chamada SIP ElevenLabs para ${lead.phone} (${lead.name})`,
+          phone: lead.phone,
+        });
 
-        if (call.conversationId || call.sipCallId) {
-          await prisma.prospectLead.updateMany({
-            where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
-            data: {
-              ...(call.conversationId ? { elevenLabsConversationId: call.conversationId } : {}),
-              ...(call.sipCallId ? { elevenLabsSipCallId: call.sipCallId } : {}),
-            },
-          });
+        // Assina Redis Pub/Sub (aguardando SUBSCRIBE) antes de disparar a chamada para evitar race condition
+        const waiter = await prepareCallResultWaiter(lead.id, PROSPECT_CALL_TIMEOUT_MS);
+
+        try {
+          const call = await startElevenLabsSipOutboundCall(lead, client.id);
+
+          if (call.conversationId || call.sipCallId) {
+            await prisma.prospectLead.updateMany({
+              where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
+              data: {
+                ...(call.conversationId ? { elevenLabsConversationId: call.conversationId } : {}),
+                ...(call.sipCallId ? { elevenLabsSipCallId: call.sipCallId } : {}),
+              },
+            });
+          }
+
+          const result = await waiter.promise;
+
+          if (result.answered) {
+            // Caso o webhook ainda não tenha gravado ATENDEU (ex.: payload mínimo), garante o status
+            await prisma.prospectLead.updateMany({
+              where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
+              data: {
+                status: ProspectStatus.ATENDEU,
+                notes: "Lead atendeu a chamada de voz (ElevenLabs).",
+              },
+            });
+          } else {
+            const reason = result.timeout
+              ? "Timeout aguardando retorno da chamada (15 min)"
+              : result.reason || "Não atendeu / falha na chamada SIP";
+
+            await finalizeUnansweredProspect(
+              lead,
+              client.id,
+              reason,
+              result.conversationId ?? call.conversationId
+            );
+          }
+        } finally {
+          waiter.cancel();
         }
-
-        const result = await waiter.promise;
-
-        if (result.answered) {
-          // Caso o webhook ainda não tenha gravado ATENDEU (ex.: payload mínimo), garante o status
-          await prisma.prospectLead.updateMany({
-            where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
-            data: {
-              status: ProspectStatus.ATENDEU,
-              notes: "Lead atendeu a chamada de voz (ElevenLabs).",
-            },
-          });
-        } else {
-          const reason = result.timeout
-            ? "Timeout aguardando retorno da chamada (15 min)"
-            : result.reason || "Não atendeu / falha na chamada SIP";
-
-          await finalizeUnansweredProspect(
-            lead,
-            client.id,
-            reason,
-            result.conversationId ?? call.conversationId
-          );
-        }
-      } finally {
-        waiter.cancel();
+      } catch (err) {
+        console.error(`[prospecting] Erro ao processar lead ${lead.phone}:`, err);
+        await prisma.prospectLead.updateMany({
+          where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
+          data: {
+            status: ProspectStatus.ERRO,
+            notes: err instanceof Error ? err.message : String(err),
+          },
+        });
+        await addSystemLog({
+          level: "error",
+          source: "prospecting",
+          message: `Erro na prospecção do lead ${lead.phone}: ${err instanceof Error ? err.message : String(err)}`,
+          phone: lead.phone,
+        });
       }
-    } catch (err) {
-      console.error(`[prospecting] Erro ao processar lead ${lead.phone}:`, err);
-      await prisma.prospectLead.updateMany({
-        where: { id: lead.id, status: ProspectStatus.EM_CHAMADA },
-        data: {
-          status: ProspectStatus.ERRO,
-          notes: err instanceof Error ? err.message : String(err),
-        },
-      });
-      await addSystemLog({
-        level: "error",
-        source: "prospecting",
-        message: `Erro na prospecção do lead ${lead.phone}: ${err instanceof Error ? err.message : String(err)}`,
-        phone: lead.phone,
+    } finally {
+      await deactivateProspectingIfIdle().catch((err) => {
+        console.error("[prospecting] Falha ao verificar encerramento automático da campanha:", err);
       });
     }
   },

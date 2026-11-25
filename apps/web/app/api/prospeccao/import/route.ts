@@ -4,19 +4,22 @@ import { importLeadsFromXlsxBuffer } from "@jonas/shared";
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    const rawFile = formData.get("file");
 
-    if (!file) {
+    if (!(rawFile instanceof File)) {
       return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
     }
+    const file = rawFile;
 
+    const lowerName = file.name.toLowerCase();
     if (
-      !file.name.endsWith(".xlsx") &&
-      !file.name.endsWith(".xls") &&
-      file.type !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      !lowerName.endsWith(".xlsx") &&
+      !lowerName.endsWith(".xls") &&
+      file.type !== "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" &&
+      file.type !== "application/vnd.ms-excel"
     ) {
       return NextResponse.json(
-        { error: "Formato inválido. Por favor, envie um arquivo Excel (.xlsx)" },
+        { error: "Formato inválido. Por favor, envie um arquivo Excel (.xlsx ou .xls)" },
         { status: 400 }
       );
     }
