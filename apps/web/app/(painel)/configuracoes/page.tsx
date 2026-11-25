@@ -385,7 +385,7 @@ export default function ConfiguracoesPage() {
           elevenLabsPhoneNumberId: data.elevenLabsPhoneNumberId ?? "",
           elevenLabsWebhookId: data.elevenLabsWebhookId ?? "",
           elevenLabsWebhookSecret: data.elevenLabsWebhookSecret ?? "",
-          elevenLabsResourcePrefix: data.elevenLabsResourcePrefix || "jonas_painel",
+          elevenLabsResourcePrefix: data.elevenLabsResourcePrefix || "painel_vendas",
           agentWebhookUrl: data.agentWebhookUrl ?? "",
           outboundWebhookUrl: data.outboundWebhookUrl ?? "",
           contractWebhookUrl: data.contractWebhookUrl ?? "",

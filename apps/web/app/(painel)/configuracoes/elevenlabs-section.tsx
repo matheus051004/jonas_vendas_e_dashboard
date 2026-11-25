@@ -123,7 +123,7 @@ function previewSlugPrefix(raw: string): string {
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 24);
-  return cleaned.length >= 2 ? cleaned : "jonas_painel";
+  return cleaned.length >= 2 ? cleaned : "painel_vendas";
 }
 
 function isLocalOrigin(urlStr: string): boolean {
@@ -377,7 +377,7 @@ export function ElevenLabsSection({
     }
   }
 
-  const normalizedPrefix = previewSlugPrefix(form.elevenLabsResourcePrefix || "jonas_painel");
+  const normalizedPrefix = previewSlugPrefix(form.elevenLabsResourcePrefix || "painel_vendas");
   const cleanPublicUrl = publicBaseUrl.trim().replace(/\/+$/, "");
   const effectiveWebhookUrl = cleanPublicUrl
     ? `${cleanPublicUrl}/api/webhooks/elevenlabs`
@@ -523,7 +523,7 @@ export function ElevenLabsSection({
                 error={!!fieldErrors.elevenLabsResourcePrefix}
                 inputProps={{ maxLength: 40 }}
                 onChange={(e) => onFieldChange({ elevenLabsResourcePrefix: e.target.value })}
-                placeholder="jonas_painel"
+                placeholder="painel_vendas"
                 helperText={
                   fieldErrors.elevenLabsResourcePrefix ??
                   `Slug aplicado: "${normalizedPrefix}" (evita conflito com outros projetos).`

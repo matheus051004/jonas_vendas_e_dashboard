@@ -5,7 +5,7 @@ import { getSettings, updateSettings } from "./settings";
 const ELEVENLABS_API_BASE = "https://api.elevenlabs.io";
 const ELEVENLABS_TIMEOUT_MS = 30_000;
 export const MASKED_SECRET_SENTINEL = "••••••••";
-const DEFAULT_RESOURCE_PREFIX = "jonas_painel";
+const DEFAULT_RESOURCE_PREFIX = "painel_vendas";
 const DEFAULT_VOICE_PROMPT =
   "Você é um consultor de vendas por voz em português do Brasil. Seja objetivo, cordial e natural ao telefone. Utilize as ferramentas disponíveis para consultar dados do cliente, verificar áreas, apresentar planos, atualizar o cadastro e registrar contratos quando o cliente demonstrar interesse.";
 const DEFAULT_FIRST_MESSAGE =
