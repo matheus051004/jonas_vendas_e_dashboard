@@ -682,8 +682,19 @@ export function buildPanelElevenLabsTools(
       apiSchema: {
         url: `${normalizedBase}/api/agent/clients/{phone}/pause-followup`,
         method: "POST",
+        content_type: "application/json",
         request_headers: { ...authHeaders },
         path_params_schema: { ...phonePathParam },
+        request_body_schema: {
+          type: "object",
+          description: "Corpo opcional para registrar a solicitação de pausa de follow-up.",
+          properties: {
+            reason: {
+              type: "string",
+              description: "Motivo opcional informado pelo cliente para pausar os retornos.",
+            },
+          },
+        },
       },
     },
   ];
