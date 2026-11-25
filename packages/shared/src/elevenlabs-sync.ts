@@ -1061,8 +1061,8 @@ export async function provisionElevenLabsResources(
 
   const hasExplicitLlm = input.llmModel !== undefined;
   const hasExplicitTts = input.ttsModelId !== undefined;
-  const requestedLlmModel = (hasExplicitLlm ? input.llmModel : settings.elevenLabsLlmModel ?? "").trim();
-  const requestedTtsModelId = (hasExplicitTts ? input.ttsModelId : settings.elevenLabsTtsModelId ?? "").trim();
+  const requestedLlmModel = (input.llmModel ?? settings.elevenLabsLlmModel ?? "").trim();
+  const requestedTtsModelId = (input.ttsModelId ?? settings.elevenLabsTtsModelId ?? "").trim();
 
   const basePersistPatch: Record<string, unknown> = {
     elevenLabsResourcePrefix: prefix,
