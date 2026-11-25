@@ -16,6 +16,7 @@ import {
   Button,
   TextField,
   IconButton,
+  InputAdornment,
   FormControlLabel,
   Switch,
   MenuItem,
@@ -30,6 +31,8 @@ import Grid from "@mui/material/Grid2";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteIcon from "@mui/icons-material/Delete";
+import SearchIcon from "@mui/icons-material/Search";
+import ClearIcon from "@mui/icons-material/Clear";
 
 const STAGES = [
   "NOVO_LEAD",
@@ -167,8 +170,16 @@ function fromEditForm(form: EditForm) {
   };
 }
 
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 export default function ClientesPage() {
   const [clients, setClients] = React.useState<Client[]>([]);
+  const [search, setSearch] = React.useState("");
   const [origins, setOrigins] = React.useState<Origin[]>([]);
   const [areas, setAreas] = React.useState<Area[]>([]);
   const [detail, setDetail] = React.useState<ClientDetail | null>(null);
@@ -252,6 +263,39 @@ export default function ClientesPage() {
     load();
   }
 
+  const filteredClients = React.useMemo(() => {
+    const trimmed = search.trim();
+    if (!trimmed) return clients;
+
+    const normalizedQuery = normalizeSearchText(trimmed);
+    const isNumericOnlyQuery = !/\p{L}/u.test(trimmed);
+    const digitsQuery = isNumericOnlyQuery ? trimmed.replace(/\D/g, "") : "";
+
+    return clients.filter((client) => {
+      const stageLabel = STAGE_LABELS[client.stage] ?? client.stage;
+      const fields = [
+        client.name ?? "Sem nome",
+        client.phone,
+        client.area?.name,
+        client.origin?.name,
+        stageLabel,
+        client.stage,
+      ];
+
+      const matchesText = fields.some(
+        (field) => field && normalizeSearchText(field).includes(normalizedQuery)
+      );
+      if (matchesText) return true;
+
+      if (digitsQuery.length > 0) {
+        const phoneDigits = client.phone.replace(/\D/g, "");
+        if (phoneDigits.includes(digitsQuery)) return true;
+      }
+
+      return false;
+    });
+  }, [clients, search]);
+
   const columns: GridColDef<Client>[] = [
     { field: "name", headerName: "Nome", flex: 1, valueGetter: (_v, row) => row.name ?? "Sem nome" },
     { field: "phone", headerName: "Telefone", flex: 1 },
@@ -292,15 +336,65 @@ export default function ClientesPage() {
 
   return (
     <Box>
-      <Typography variant="h4" mb={3}>
-        Clientes
-      </Typography>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        justifyContent="space-between"
+        alignItems={{ xs: "stretch", sm: "center" }}
+        spacing={2}
+        mb={3}
+      >
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <Typography variant="h4">Clientes</Typography>
+          <Chip
+            label={
+              search.trim()
+                ? `${filteredClients.length} de ${clients.length}`
+                : `${clients.length}`
+            }
+            size="small"
+            variant="outlined"
+          />
+        </Stack>
+        <TextField
+          size="small"
+          placeholder="Buscar por nome, telefone, área, origem ou etapa..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          sx={{ width: { xs: "100%", sm: 320, md: 380 } }}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" color="action" />
+                </InputAdornment>
+              ),
+              endAdornment: search ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    aria-label="Limpar busca"
+                    onClick={() => setSearch("")}
+                    edge="end"
+                  >
+                    <ClearIcon fontSize="small" />
+                  </IconButton>
+                </InputAdornment>
+              ) : undefined,
+            },
+          }}
+        />
+      </Stack>
       <Box sx={{ height: { xs: "calc(100vh - 180px)", md: 600 }, bgcolor: "background.paper" }}>
         <DataGrid
-          rows={clients}
+          rows={filteredClients}
           columns={columns}
           onRowClick={(params) => openDetail(params.row.id)}
           disableRowSelectionOnClick
+          localeText={{
+            noRowsLabel: search.trim()
+              ? "Nenhum cliente encontrado para a busca."
+              : "Nenhum cliente cadastrado.",
+          }}
         />
       </Box>
 
