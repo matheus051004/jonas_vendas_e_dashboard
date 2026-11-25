@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   Checkbox,
-  Chip,
   CircularProgress,
   Divider,
   FormControl,
@@ -23,10 +22,7 @@ import {
   Typography,
 } from "@mui/material";
 import Grid from "@mui/material/Grid2";
-import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import PhoneInTalkIcon from "@mui/icons-material/PhoneInTalk";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
@@ -409,7 +405,6 @@ export function ElevenLabsSection({
 
   return (
     <Stack spacing={2.5}>
-      {/* PASSO 1: API KEY E DESCOBERTA */}
       <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "flex-start" }}>
         <TextField
           label="ElevenLabs API Key (xi-api-key)"
@@ -420,8 +415,8 @@ export function ElevenLabsSection({
           helperText={
             fieldErrors.elevenLabsApiKey ??
             (form.elevenLabsApiKey === MASKED
-              ? "Chave salva no banco. Digite uma nova chave para substituir ou limpe o campo para remover."
-              : "Chave da API ElevenLabs com permissão de workspace para agentes, tools, secrets e webhooks.")
+              ? "Chave salva no banco. Digite outra para substituir ou limpe para remover."
+              : "Chave de API com permissão para agentes, tools, secrets e webhooks.")
           }
           placeholder="sk_..."
           onChange={(e) => onFieldChange({ elevenLabsApiKey: e.target.value })}
@@ -442,11 +437,10 @@ export function ElevenLabsSection({
         />
         <Button
           variant="outlined"
-          color="secondary"
           onClick={() => void loadAccountResources(false)}
           disabled={loadingResources || !form.elevenLabsApiKey.trim()}
           startIcon={loadingResources ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
-          sx={{ minWidth: 230, height: 56, flexShrink: 0 }}
+          sx={{ minWidth: 210, height: 56, flexShrink: 0 }}
         >
           {loadingResources ? "Carregando..." : "Carregar SIP e vozes"}
         </Button>
@@ -455,53 +449,29 @@ export function ElevenLabsSection({
       {resourcesError && <Alert severity="error">{resourcesError}</Alert>}
 
       {resources && (
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Chip
-            size="small"
-            icon={<PhoneInTalkIcon />}
-            color={resources.sipPhoneNumbers.length > 0 ? "success" : "warning"}
-            variant="outlined"
-            label={`${resources.sipPhoneNumbers.length} número(s) SIP Trunk na conta`}
-          />
-          <Chip
-            size="small"
-            color={resources.prefixedToolsCount > 0 ? "success" : "default"}
-            variant="outlined"
-            label={`${resources.prefixedToolsCount} tool(s) com prefixo "${resources.currentPrefix}_"`}
-          />
-          <Chip
-            size="small"
-            color={agentWebhookMatches ? "success" : "default"}
-            variant="outlined"
-            label={webhookChipLabel}
-          />
-        </Stack>
+        <Typography variant="caption" color="text.secondary">
+          Conta conectada: {resources.sipPhoneNumbers.length} número(s) SIP ·{" "}
+          {resources.prefixedToolsCount} tool(s) ({resources.currentPrefix}_*) · {webhookChipLabel}
+        </Typography>
       )}
 
-      {/* PASSO 2: PROVISIONAMENTO AUTOMÁTICO EM 1 CLIQUE */}
       <Box
         sx={{
-          p: 2.5,
-          borderRadius: 2,
+          p: 2,
+          borderRadius: 1.5,
           border: 1,
-          borderColor: "secondary.main",
-          bgcolor: "rgba(156, 39, 176, 0.03)",
+          borderColor: "divider",
+          bgcolor: "grey.50",
         }}
       >
         <Stack spacing={2}>
           <Box>
-            <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
-              <AutoFixHighIcon color="secondary" fontSize="small" />
-              <Typography variant="subtitle1" fontWeight={700}>
-                Provisionamento Automático (1 Clique)
-              </Typography>
-            </Stack>
+            <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+              Sincronização com a ElevenLabs
+            </Typography>
             <Typography variant="body2" color="text.secondary">
-              Cria ou sincroniza automaticamente na sua conta ElevenLabs o <strong>Secret</strong>, as{" "}
-              <strong>12 ferramentas</strong> (<code>/api/agent/*</code>), o <strong>Agente de Voz</strong>{" "}
-              (com prompt, primeira mensagem, overrides e <strong>Webhook pós-chamada isolado</strong> no
-              próprio agente, sem alterar o webhook global de outros projetos) e vincula o{" "}
-              <strong>Número SIP Trunk</strong> escolhido.
+              Cria ou atualiza o secret, as 12 tools (/api/agent/*), o agente de voz, o webhook
+              pós-chamada do agente e vincula o número SIP selecionado.
             </Typography>
           </Box>
 
@@ -517,14 +487,14 @@ export function ElevenLabsSection({
                 error={Boolean(publicBaseUrl) && publicUrlIsLocal}
                 helperText={
                   publicUrlIsLocal
-                    ? "Substitua localhost/IP privado pelo domínio público HTTPS acessível pela ElevenLabs."
-                    : "Base usada para cadastrar as 12 tools (/api/agent/*) e o webhook pós-chamada."
+                    ? "Substitua localhost/IP privado pelo domínio público HTTPS."
+                    : "Base usada nas tools (/api/agent/*) e no webhook pós-chamada."
                 }
               />
             </Grid>
             <Grid size={{ xs: 12, sm: 5 }}>
               <TextField
-                label="Prefixo dos Recursos na ElevenLabs"
+                label="Prefixo dos Recursos"
                 fullWidth
                 size="small"
                 value={form.elevenLabsResourcePrefix}
@@ -543,16 +513,13 @@ export function ElevenLabsSection({
           <Box
             sx={{
               px: 1.5,
-              py: 1.25,
-              borderRadius: 1.5,
+              py: 1,
+              borderRadius: 1,
               bgcolor: "background.paper",
               border: 1,
               borderColor: "divider",
             }}
           >
-            <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={0.5}>
-              Nomes que serão criados na ElevenLabs:
-            </Typography>
             <Grid container spacing={0.75} sx={{ fontSize: 12, color: "text.secondary" }}>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <strong>Agente:</strong> <code>{prefixLabel} - Prospecção de Voz</code>
@@ -572,10 +539,10 @@ export function ElevenLabsSection({
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth size="small">
-                <InputLabel id="sip-number-select-label">Número SIP Trunk (ElevenLabs)</InputLabel>
+                <InputLabel id="sip-number-select-label">Número SIP Trunk</InputLabel>
                 <Select
                   labelId="sip-number-select-label"
-                  label="Número SIP Trunk (ElevenLabs)"
+                  label="Número SIP Trunk"
                   value={
                     selectablePhoneNumbers.some(
                       (p) => p.phoneNumberId === form.elevenLabsPhoneNumberId
@@ -590,8 +557,8 @@ export function ElevenLabsSection({
                     <em>
                       {resources
                         ? selectablePhoneNumbers.length > 0
-                          ? "Selecione um número SIP da conta..."
-                          : "Nenhum número SIP encontrado na ElevenLabs"
+                          ? "Selecione um número SIP..."
+                          : "Nenhum número SIP encontrado"
                         : 'Clique em "Carregar SIP e vozes" para listar'}
                     </em>
                   </MenuItem>
@@ -610,7 +577,7 @@ export function ElevenLabsSection({
                   ))}
                 </Select>
                 <FormHelperText>
-                  Ao sincronizar, o agente será vinculado automaticamente a este número SIP.
+                  Vinculado automaticamente ao agente durante a sincronização.
                 </FormHelperText>
               </FormControl>
             </Grid>
@@ -632,7 +599,7 @@ export function ElevenLabsSection({
                   <MenuItem value="">
                     <em>
                       {resources
-                        ? "Manter voz atual / padrão da ElevenLabs"
+                        ? "Manter voz atual / padrão"
                         : 'Clique em "Carregar SIP e vozes" para listar'}
                     </em>
                   </MenuItem>
@@ -644,7 +611,7 @@ export function ElevenLabsSection({
                   ))}
                 </Select>
                 <FormHelperText>
-                  Na criação do agente, usa modelo <code>eleven_flash_v2_5</code> (PT-BR baixa latência).
+                  Na criação do agente, utiliza o modelo <code>eleven_flash_v2_5</code>.
                 </FormHelperText>
               </FormControl>
             </Grid>
@@ -672,29 +639,19 @@ export function ElevenLabsSection({
             />
             <Button
               variant="contained"
-              color="secondary"
-              size="large"
               disabled={provisioning || !form.elevenLabsApiKey.trim() || publicUrlIsLocal}
               onClick={() => void handleProvisionAll()}
-              startIcon={
-                provisioning ? (
-                  <CircularProgress size={18} color="inherit" />
-                ) : (
-                  <AutoFixHighIcon />
-                )
-              }
+              startIcon={provisioning ? <CircularProgress size={16} color="inherit" /> : undefined}
             >
-              {provisioning
-                ? "Provisionando na ElevenLabs..."
-                : "Provisionar / Sincronizar na ElevenLabs"}
+              {provisioning ? "Provisionando..." : "Provisionar na ElevenLabs"}
             </Button>
           </Stack>
 
           {provisionError && <Alert severity="error">{provisionError}</Alert>}
 
           {provisionResult && (
-            <Alert severity="success" icon={<CheckCircleOutlineIcon fontSize="inherit" />}>
-              <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+            <Alert severity="success">
+              <Typography variant="subtitle2" fontWeight={600} gutterBottom>
                 Sincronização concluída (prefixo: {provisionResult.prefix})
               </Typography>
               <Stack spacing={0.5} sx={{ fontSize: 13 }}>
@@ -712,8 +669,7 @@ export function ElevenLabsSection({
                   {provisionResult.agent.action === "created" ? "criado" : "atualizado"})
                 </div>
                 <div>
-                  • <strong>Webhook pós-chamada (escopo do agente):</strong>{" "}
-                  <code>{provisionResult.webhook.url}</code> (
+                  • <strong>Webhook pós-chamada:</strong> <code>{provisionResult.webhook.url}</code> (
                   {provisionResult.webhook.action === "created" ? "criado" : "reutilizado"}
                   {provisionResult.webhook.secretRotated ? ", signing secret salvo" : ""})
                 </div>
@@ -740,9 +696,8 @@ export function ElevenLabsSection({
 
       <Divider />
 
-      {/* PASSO 3: IDS E CREDENCIAIS SALVAS (AUTO-PREENCHIDAS OU AJUSTE MANUAL) */}
       <Typography variant="subtitle2" color="text.secondary" fontWeight={600}>
-        Identificadores Salvos (preenchidos automaticamente pela sincronização ou editáveis manualmente)
+        Credenciais e IDs salvos
       </Typography>
 
       <Grid container spacing={2}>
@@ -752,9 +707,7 @@ export function ElevenLabsSection({
             fullWidth
             value={form.elevenLabsAgentId}
             error={!!fieldErrors.elevenLabsAgentId}
-            helperText={
-              fieldErrors.elevenLabsAgentId ?? "ID do agente sincronizado no ElevenLabs Agents."
-            }
+            helperText={fieldErrors.elevenLabsAgentId ?? "ID do agente na ElevenLabs."}
             placeholder="agent_..."
             onChange={(e) => onFieldChange({ elevenLabsAgentId: e.target.value })}
           />
@@ -766,8 +719,7 @@ export function ElevenLabsSection({
             value={form.elevenLabsPhoneNumberId}
             error={!!fieldErrors.elevenLabsPhoneNumberId}
             helperText={
-              fieldErrors.elevenLabsPhoneNumberId ??
-              "Preenchido ao escolher o número SIP acima ou colado manualmente."
+              fieldErrors.elevenLabsPhoneNumberId ?? "ID do número SIP vinculado às chamadas."
             }
             placeholder="phnum_..."
             onChange={(e) => onFieldChange({ elevenLabsPhoneNumberId: e.target.value })}
@@ -784,8 +736,8 @@ export function ElevenLabsSection({
         helperText={
           fieldErrors.elevenLabsWebhookSecret ??
           (form.elevenLabsWebhookSecret === MASKED
-            ? "Secret salvo no banco (gerado automaticamente na sincronização ou salvo manualmente)."
-            : "Usado para validar a assinatura HMAC-SHA256 (header ElevenLabs-Signature) nos eventos pós-chamada.")
+            ? "Secret salvo no banco."
+            : "Usado para validar o header ElevenLabs-Signature (HMAC-SHA256) nos eventos pós-chamada.")
         }
         placeholder="wsec_..."
         onChange={(e) => onFieldChange({ elevenLabsWebhookSecret: e.target.value })}
@@ -805,35 +757,25 @@ export function ElevenLabsSection({
         }}
       />
 
-      <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 2, border: 1, borderColor: "divider" }}>
-        <Typography variant="subtitle2" gutterBottom fontWeight={600}>
-          Post-Call Webhook da ElevenLabs
-        </Typography>
-        <Typography variant="body2" color="text.secondary" paragraph sx={{ mb: 1.5 }}>
-          Vinculado automaticamente ao agente ao clicar em <strong>Provisionar / Sincronizar</strong>{" "}
-          (eventos <code>transcript</code> e <code>call_initiation_failure</code>). Caso prefira configurar
-          manualmente:
-        </Typography>
-
-        <TextField
-          label="URL do Post-Call Webhook"
-          fullWidth
-          size="small"
-          value={effectiveWebhookUrl}
-          disabled
-          InputProps={{
-            endAdornment: (
-              <InputAdornment position="end">
-                <Tooltip title="Copiar URL">
-                  <IconButton edge="end" onClick={() => onCopyUrl(effectiveWebhookUrl)}>
-                    <ContentCopyIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
+      <TextField
+        label="URL do Post-Call Webhook"
+        fullWidth
+        size="small"
+        value={effectiveWebhookUrl}
+        disabled
+        helperText="Vinculada ao agente automaticamente na sincronização (eventos transcript e call_initiation_failure)."
+        InputProps={{
+          endAdornment: (
+            <InputAdornment position="end">
+              <Tooltip title="Copiar URL">
+                <IconButton edge="end" onClick={() => onCopyUrl(effectiveWebhookUrl)}>
+                  <ContentCopyIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </InputAdornment>
+          ),
+        }}
+      />
 
       <Stack direction="row" justifyContent="flex-end">
         <Button variant="contained" onClick={() => void onSaveManual()}>

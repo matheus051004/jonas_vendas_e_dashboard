@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  Alert,
   Box,
   Button,
   CircularProgress,
@@ -28,9 +27,6 @@ import PaletteIcon from "@mui/icons-material/Palette";
 import SmartToyIcon from "@mui/icons-material/SmartToy";
 import WebhookIcon from "@mui/icons-material/Webhook";
 import TuneIcon from "@mui/icons-material/Tune";
-import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
-import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
-import SupportAgentIcon from "@mui/icons-material/SupportAgent";
 import PhoneInTalkIcon from "@mui/icons-material/PhoneInTalk";
 import AddIcon from "@mui/icons-material/Add";
 import { ElevenLabsSection } from "./elevenlabs-section";
@@ -115,9 +111,19 @@ const WEBHOOK_FIELDS: (keyof Settings)[] = [
   "agentWebhookUrl",
   "outboundWebhookUrl",
   "contractWebhookUrl",
-  "prospectingTextWebhookUrl",
   "outboundWebhookSecret",
 ];
+
+const SettingsChatWebhooksSchema = SettingsWebhooksSchema.pick({
+  agentWebhookUrl: true,
+  outboundWebhookUrl: true,
+  contractWebhookUrl: true,
+  outboundWebhookSecret: true,
+});
+
+const SettingsProspectingTextSchema = SettingsWebhooksSchema.pick({
+  prospectingTextWebhookUrl: true,
+});
 
 const HUBSOFT_FIELDS: (keyof Settings)[] = [
   "hubsoftBaseUrl",
@@ -540,7 +546,7 @@ export default function ConfiguracoesPage() {
   async function handleSaveWebhooks() {
     setFieldErrors({});
     const payload = sliceFields(WEBHOOK_FIELDS);
-    const parsed = SettingsWebhooksSchema.safeParse(payload);
+    const parsed = SettingsChatWebhooksSchema.safeParse(payload);
     if (!parsed.success) {
       const errors = zodFieldErrors(parsed.error);
       setFieldErrors(errors);
@@ -552,6 +558,24 @@ export default function ConfiguracoesPage() {
     setSnackbar({
       open: true,
       message: result.ok ? "Webhooks salvos com sucesso" : `Erro ao salvar webhooks — ${result.message}`,
+    });
+  }
+
+  async function handleSaveProspectingText() {
+    setFieldErrors({});
+    const payload = { prospectingTextWebhookUrl: form?.prospectingTextWebhookUrl ?? "" };
+    const parsed = SettingsProspectingTextSchema.safeParse(payload);
+    if (!parsed.success) {
+      const errors = zodFieldErrors(parsed.error);
+      setFieldErrors(errors);
+      setSnackbar({ open: true, message: firstFieldError(errors) ?? "Verifique a URL do fallback de texto." });
+      return;
+    }
+
+    const result = await patch(parsed.data);
+    setSnackbar({
+      open: true,
+      message: result.ok ? "Fallback de texto salvo com sucesso" : `Erro ao salvar fallback — ${result.message}`,
     });
   }
 
@@ -640,7 +664,8 @@ export default function ConfiguracoesPage() {
         >
           <Tab icon={<PaletteIcon />} iconPosition="start" label="Aparência & Marca" />
           <Tab icon={<SmartToyIcon />} iconPosition="start" label="Prompts de IA" />
-          <Tab icon={<WebhookIcon />} iconPosition="start" label="Webhooks & Integrações" />
+          <Tab icon={<WebhookIcon />} iconPosition="start" label="Webhooks" />
+          <Tab icon={<PhoneInTalkIcon />} iconPosition="start" label="Prospecção & ElevenLabs" />
           <Tab icon={<TuneIcon />} iconPosition="start" label="Follow-up & Hubsoft" />
         </Tabs>
       </Paper>
@@ -839,11 +864,9 @@ export default function ConfiguracoesPage() {
       {/* ABA 1: PROMPTS DE IA */}
       {activeTab === 1 && (
         <Stack spacing={3}>
-          {/* IA DE VENDAS (CHAT GERAL) */}
           <SectionCard
-            title="1. IA de Atendimento & Vendas (WhatsApp / Chat)"
-            description="Instruções e persona para o atendimento receptivo de mensagens e conversas via chat."
-            badge={<Chip label="Receptivo / Chat" color="primary" variant="outlined" size="small" icon={<SupportAgentIcon />} />}
+            title="IA de Atendimento (Chat)"
+            description="Instruções e persona para o atendimento receptivo via WhatsApp/chat."
           >
             <TextField
               label="Endpoint do Prompt de Vendas (GET)"
@@ -887,21 +910,10 @@ export default function ConfiguracoesPage() {
             />
           </SectionCard>
 
-          {/* IA DE VOZ (PROSPECÇÃO ATIVA POR LIGAÇÃO) */}
           <SectionCard
-            title="2. IA de Voz (Prospecção Ativa — ElevenLabs Agents)"
-            description="Persona, script de abordagem telefônica e saudação inicial enviados via override em cada chamada SIP."
-            badge={<Chip label="Prospecção Ativa (Voz)" color="secondary" variant="outlined" size="small" icon={<RecordVoiceOverIcon />} />}
+            title="IA de Voz (Prospecção)"
+            description="Saudação inicial e instruções enviadas por ligação na prospecção ativa."
           >
-            <Alert severity="info" variant="outlined">
-              Variáveis dinâmicas injetadas automaticamente em toda ligação:{" "}
-              <code>{"{{name}}"}</code>, <code>{"{{phone}}"}</code>, <code>{"{{raw_document}}"}</code>,{" "}
-              <code>{"{{neighborhood}}"}</code>, <code>{"{{city}}"}</code>, <code>{"{{full_address}}"}</code>.
-              <br />
-              Lembre-se de ativar <strong>System Prompt</strong> e <strong>First Message</strong> em{" "}
-              <em>Agent → Security → Enable overrides</em> no painel da ElevenLabs.
-            </Alert>
-
             <TextField
               label="Saudação Inicial da Ligação (voiceFirstMessage)"
               fullWidth
@@ -909,9 +921,9 @@ export default function ConfiguracoesPage() {
               error={!!fieldErrors.voiceFirstMessage}
               helperText={
                 fieldErrors.voiceFirstMessage ??
-                "Primeira frase falada pelo agente ao o lead atender. Se vazio, usa a saudação padrão configurada na ElevenLabs."
+                "Variáveis disponíveis: {{name}}, {{phone}}, {{raw_document}}, {{neighborhood}}, {{city}}, {{full_address}}."
               }
-              placeholder="Olá {{name}}, tudo bem? Aqui é da Ligtop Fibra, estou falando com o responsável?"
+              placeholder="Olá {{name}}, tudo bem? Aqui é da equipe de atendimento, estou falando com o responsável?"
               onChange={(e) => setForm({ ...form, voiceFirstMessage: e.target.value })}
             />
 
@@ -944,9 +956,9 @@ export default function ConfiguracoesPage() {
               error={!!fieldErrors.voiceAiPrompt}
               helperText={
                 fieldErrors.voiceAiPrompt ??
-                `Se preenchido, sobrescreve o System Prompt do agente na ElevenLabs (${form.voiceAiPrompt.length} caracteres).`
+                `Sobrescreve o System Prompt do agente na ElevenLabs (${form.voiceAiPrompt.length} caracteres).`
               }
-              placeholder="Exemplo: Você é o consultor de prospecção por voz da Ligtop Fibra falando com {{name}} ({{neighborhood}}). Apresente os planos disponíveis e use as tools para consultar cobertura e fechar contrato..."
+              placeholder="Exemplo: Você é o consultor de prospecção por voz falando com {{name}} ({{neighborhood}}). Apresente os planos disponíveis e use as tools para consultar cobertura e fechar contrato..."
               onChange={(e) => setForm({ ...form, voiceAiPrompt: e.target.value })}
               InputProps={{
                 sx: {
@@ -958,11 +970,9 @@ export default function ConfiguracoesPage() {
             />
           </SectionCard>
 
-          {/* IA DE TEXTO (PROSPECÇÃO ATIVA / FALLBACK) */}
           <SectionCard
-            title="3. IA de Texto (Prospecção / Mensagem de Fallback)"
-            description="Mensagem e instruções para envio via texto quando a ligação não for atendida ou em prospecção direta."
-            badge={<Chip label="Prospecção Ativa (Texto)" color="info" variant="outlined" size="small" icon={<ChatBubbleOutlineIcon />} />}
+            title="IA de Texto (Fallback)"
+            description="Instruções para abordagem via texto quando a ligação não for atendida."
           >
             <TextField
               label="Endpoint do Prompt de Texto (GET)"
@@ -993,9 +1003,9 @@ export default function ConfiguracoesPage() {
               error={!!fieldErrors.textAiPrompt}
               helperText={
                 fieldErrors.textAiPrompt ??
-                `Defina o modelo de mensagem de abordagem que será enviado quando a ligação falhar (${form.textAiPrompt.length} caracteres).`
+                `Modelo de abordagem para envio quando a ligação falhar (${form.textAiPrompt.length} caracteres).`
               }
-              placeholder="Exemplo: Olá! Tentamos contato por telefone para apresentar nossa condição especial de internet fibra para o seu endereço em Ceilândia. Responda esta mensagem para conferir os planos disponíveis com instalação grátis!"
+              placeholder="Exemplo: Olá! Tentamos contato por telefone para apresentar nossa condição especial de internet fibra para o seu endereço. Responda esta mensagem para conferir os planos disponíveis!"
               onChange={(e) => setForm({ ...form, textAiPrompt: e.target.value })}
               InputProps={{
                 sx: {
@@ -1015,54 +1025,9 @@ export default function ConfiguracoesPage() {
         </Stack>
       )}
 
-      {/* ABA 2: WEBHOOKS & INTEGRAÇÕES */}
+      {/* ABA 2: WEBHOOKS */}
       {activeTab === 2 && (
         <Stack spacing={3}>
-          {/* ELEVENLABS AGENTS (SIP TRUNK) */}
-          <SectionCard
-            title="ElevenLabs Agents — Ligações de Voz (SIP Trunk)"
-            description="Conecte sua conta ElevenLabs, selecione o número SIP Trunk e provisione automaticamente Secret, 12 ferramentas, Agente de Voz e Webhook pós-chamada com prefixo isolado."
-            badge={<Chip label="Voz Nativa" color="secondary" size="small" icon={<PhoneInTalkIcon />} />}
-          >
-            <ElevenLabsSection
-              form={{
-                elevenLabsApiKey: form.elevenLabsApiKey,
-                elevenLabsAgentId: form.elevenLabsAgentId,
-                elevenLabsPhoneNumberId: form.elevenLabsPhoneNumberId,
-                elevenLabsWebhookId: form.elevenLabsWebhookId,
-                elevenLabsWebhookSecret: form.elevenLabsWebhookSecret,
-                elevenLabsResourcePrefix: form.elevenLabsResourcePrefix,
-              }}
-              fieldErrors={fieldErrors}
-              onFieldChange={handleElevenLabsFieldChange}
-              onSettingsSynced={handleElevenLabsFieldChange}
-              onSaveManual={handleSaveElevenLabs}
-              onCopyUrl={handleCopyUrlVoid}
-              onNotify={handleNotify}
-            />
-          </SectionCard>
-
-          {/* FALLBACK DE TEXTO DA PROSPECÇÃO */}
-          <SectionCard
-            title="Fallback de Texto da Prospecção (Opcional)"
-            description="Webhook acionado apenas quando a ligação SIP não é atendida ou falha e você deseja disparar uma abordagem por texto."
-            badge={<Chip label="Fallback Texto" color="info" variant="outlined" size="small" />}
-          >
-            <TextField
-              label="URL do Webhook de Fallback de Texto (prospectingTextWebhookUrl)"
-              fullWidth
-              value={form.prospectingTextWebhookUrl}
-              error={!!fieldErrors.prospectingTextWebhookUrl}
-              helperText={
-                fieldErrors.prospectingTextWebhookUrl ??
-                "Opcional. Se preenchido, recebe POST com { leadId, clientId, phone, name, action: 'TEXT', metadata } quando o lead não atender."
-              }
-              placeholder="https://seu-disparador.com.br/api/enviar-texto"
-              onChange={(e) => setForm({ ...form, prospectingTextWebhookUrl: e.target.value })}
-            />
-          </SectionCard>
-
-          {/* WEBHOOKS DE ATENDIMENTO E CHAT */}
           <SectionCard
             title="Webhooks de Atendimento & Chat"
             description="Entrada e saída de mensagens para chat/WhatsApp e notificações de fechamento de contrato."
@@ -1156,8 +1121,59 @@ export default function ConfiguracoesPage() {
         </Stack>
       )}
 
-      {/* ABA 3: FOLLOW-UP & HUBSOFT */}
+      {/* ABA 3: PROSPECÇÃO & ELEVENLABS */}
       {activeTab === 3 && (
+        <Stack spacing={3}>
+          <SectionCard
+            title="ElevenLabs (Ligações SIP)"
+            description="Conecte a conta ElevenLabs, escolha o número SIP e sincronize secret, tools, agente e webhook."
+          >
+            <ElevenLabsSection
+              form={{
+                elevenLabsApiKey: form.elevenLabsApiKey,
+                elevenLabsAgentId: form.elevenLabsAgentId,
+                elevenLabsPhoneNumberId: form.elevenLabsPhoneNumberId,
+                elevenLabsWebhookId: form.elevenLabsWebhookId,
+                elevenLabsWebhookSecret: form.elevenLabsWebhookSecret,
+                elevenLabsResourcePrefix: form.elevenLabsResourcePrefix,
+              }}
+              fieldErrors={fieldErrors}
+              onFieldChange={handleElevenLabsFieldChange}
+              onSettingsSynced={handleElevenLabsFieldChange}
+              onSaveManual={handleSaveElevenLabs}
+              onCopyUrl={handleCopyUrlVoid}
+              onNotify={handleNotify}
+            />
+          </SectionCard>
+
+          <SectionCard
+            title="Fallback de Texto da Prospecção"
+            description="Webhook opcional disparado quando a ligação SIP não é atendida ou falha."
+          >
+            <TextField
+              label="URL do Webhook de Fallback de Texto (prospectingTextWebhookUrl)"
+              fullWidth
+              value={form.prospectingTextWebhookUrl}
+              error={!!fieldErrors.prospectingTextWebhookUrl}
+              helperText={
+                fieldErrors.prospectingTextWebhookUrl ??
+                "Recebe POST com { leadId, clientId, phone, name, action: 'TEXT', metadata } quando o lead não atender."
+              }
+              placeholder="https://seu-disparador.com.br/api/enviar-texto"
+              onChange={(e) => setForm({ ...form, prospectingTextWebhookUrl: e.target.value })}
+            />
+
+            <Stack direction="row" justifyContent="flex-end">
+              <Button variant="contained" onClick={() => void handleSaveProspectingText()}>
+                Salvar fallback
+              </Button>
+            </Stack>
+          </SectionCard>
+        </Stack>
+      )}
+
+      {/* ABA 4: FOLLOW-UP & HUBSOFT */}
+      {activeTab === 4 && (
         <Stack spacing={3}>
           {/* INTERVALOS DE FOLLOW-UP */}
           <SectionCard
