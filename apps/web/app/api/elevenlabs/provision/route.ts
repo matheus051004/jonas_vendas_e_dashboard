@@ -11,6 +11,8 @@ const ProvisionRequestSchema = z.object({
   publicBaseUrl: z.string().min(1, "Informe a URL pública HTTPS do painel."),
   prefix: z.string().max(40, "O prefixo deve ter no máximo 40 caracteres.").optional(),
   voiceId: z.string().optional(),
+  llmModel: z.string().max(120, "O modelo de raciocínio deve ter no máximo 120 caracteres.").optional(),
+  ttsModelId: z.string().max(120, "O modelo de voz deve ter no máximo 120 caracteres.").optional(),
   phoneNumberId: z.string().optional(),
   agentId: z.string().optional(),
   recreateWebhook: z.boolean().optional(),
@@ -41,6 +43,8 @@ export async function POST(req: NextRequest) {
         elevenLabsWebhookId: updated.elevenLabsWebhookId,
         elevenLabsWebhookSecret: updated.elevenLabsWebhookSecret ? MASKED_SECRET_SENTINEL : "",
         elevenLabsResourcePrefix: updated.elevenLabsResourcePrefix,
+        elevenLabsLlmModel: updated.elevenLabsLlmModel,
+        elevenLabsTtsModelId: updated.elevenLabsTtsModelId,
       },
     });
   } catch (err: unknown) {

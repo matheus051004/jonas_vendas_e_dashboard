@@ -54,21 +54,45 @@ export interface ElevenLabsWebhookSummary {
   isAutoDisabled: boolean;
 }
 
+export interface ElevenLabsLlmModelItem {
+  llm: string;
+  maxContextLimit: number | null;
+  maxTokensLimit: number | null;
+  supportsParallelToolCalls: boolean;
+  isDeprecated: boolean;
+  isInWarningPeriod: boolean;
+}
+
+export interface ElevenLabsTtsModelItem {
+  modelId: string;
+  name: string;
+  description: string;
+  supportsPortuguese: boolean;
+  isLowLatency: boolean;
+}
+
 export interface ElevenLabsAccountResources {
   phoneNumbers: ElevenLabsPhoneNumberItem[];
   sipPhoneNumbers: ElevenLabsPhoneNumberItem[];
   voices: ElevenLabsVoiceItem[];
+  llmModels: ElevenLabsLlmModelItem[];
+  ttsModels: ElevenLabsTtsModelItem[];
   agents: ElevenLabsAgentSummary[];
   prefixedToolsCount: number;
   prefixedToolNames: string[];
   activeAgentWebhookId: string | null;
   activeAgentWebhookEvents: string[];
+  activeAgentLlmModel: string | null;
+  activeAgentTtsModelId: string | null;
+  activeAgentVoiceId: string | null;
   activeWorkspaceWebhookId: string | null;
   webhooks: ElevenLabsWebhookSummary[];
   currentPrefix: string;
   configuredAgentId: string;
   configuredPhoneNumberId: string;
   configuredWebhookId: string;
+  configuredLlmModel: string;
+  configuredTtsModelId: string;
   hasWebhookSecret: boolean;
 }
 
@@ -77,6 +101,8 @@ export interface ProvisionElevenLabsInput {
   publicBaseUrl: string;
   prefix?: string;
   voiceId?: string;
+  llmModel?: string;
+  ttsModelId?: string;
   phoneNumberId?: string;
   agentId?: string;
   recreateWebhook?: boolean;
@@ -102,6 +128,8 @@ export interface ProvisionElevenLabsResult {
     name: string;
     action: "created" | "updated";
     voiceId: string | null;
+    llmModel: string | null;
+    ttsModelId: string | null;
   };
   webhook: {
     webhookId: string;
@@ -787,8 +815,13 @@ interface AgentDetailResponse {
   conversation_config?: {
     agent?: {
       prompt?: {
+        llm?: string | null;
         tool_ids?: string[] | null;
       } | null;
+    } | null;
+    tts?: {
+      model_id?: string | null;
+      voice_id?: string | null;
     } | null;
   } | null;
   platform_settings?: {
@@ -802,64 +835,97 @@ interface AgentDetailResponse {
 }
 
 /**
- * Consulta recursos existentes na conta ElevenLabs (números SIP, vozes, agentes, tools e webhooks)
+ * Consulta recursos existentes na conta ElevenLabs (números SIP, vozes, modelos LLM/TTS, agentes, tools e webhooks)
  * para exibir nos seletores do painel sem precisar copiar IDs manualmente.
  */
 export async function listElevenLabsAccountResources(
   overrideApiKey?: string,
-  overridePrefix?: string
+  overridePrefix?: string,
+  overrideAgentId?: string
 ): Promise<ElevenLabsAccountResources> {
   const apiKey = await resolveElevenLabsApiKey(overrideApiKey);
   const settings = await getSettings();
   const currentPrefix = normalizeElevenLabsPrefix(overridePrefix ?? settings.elevenLabsResourcePrefix);
-  const configuredAgentId = settings.elevenLabsAgentId.trim();
+  const configuredAgentId = (
+    overrideAgentId !== undefined ? overrideAgentId : settings.elevenLabsAgentId
+  ).trim();
 
-  const [rawPhoneNumbers, rawVoices, agents, tools, rawWebhooksRes, convaiSettings, agentDetail] =
-    await Promise.all([
-      elevenLabsRequest<
-        Array<{
-          phone_number_id: string;
-          phone_number: string;
-          label?: string;
-          provider?: string;
-          supports_inbound?: boolean;
-          supports_outbound?: boolean;
-          assigned_agent?: { agent_id?: string; agent_name?: string } | null;
-        }>
-      >(apiKey, "/v1/convai/phone-numbers"),
-      elevenLabsRequest<{
-        voices?: Array<{
-          voice_id: string;
-          name: string;
-          category?: string | null;
-          labels?: Record<string, string> | null;
-        }>;
-      }>(apiKey, "/v1/voices"),
-      listAllAgents(apiKey),
-      listAllTools(apiKey),
-      elevenLabsRequest<{
-        webhooks?: Array<{
-          webhook_id: string;
-          name: string;
-          webhook_url: string;
-          auth_type: string;
-          is_disabled?: boolean;
-          is_auto_disabled?: boolean;
-        }>;
-      }>(apiKey, "/v1/workspace/webhooks").catch(() => ({ webhooks: [] })),
-      elevenLabsRequest<{
-        webhooks?: {
-          post_call_webhook_id?: string | null;
-          events?: string[] | null;
+  const [
+    rawPhoneNumbers,
+    rawVoices,
+    rawLlmsRes,
+    rawModels,
+    agents,
+    tools,
+    rawWebhooksRes,
+    convaiSettings,
+    agentDetail,
+  ] = await Promise.all([
+    elevenLabsRequest<
+      Array<{
+        phone_number_id: string;
+        phone_number: string;
+        label?: string;
+        provider?: string;
+        supports_inbound?: boolean;
+        supports_outbound?: boolean;
+        assigned_agent?: { agent_id?: string; agent_name?: string } | null;
+      }>
+    >(apiKey, "/v1/convai/phone-numbers"),
+    elevenLabsRequest<{
+      voices?: Array<{
+        voice_id: string;
+        name: string;
+        category?: string | null;
+        labels?: Record<string, string> | null;
+      }>;
+    }>(apiKey, "/v1/voices"),
+    elevenLabsRequest<{
+      llms?: Array<{
+        llm?: string;
+        max_tokens_limit?: number | null;
+        max_context_limit?: number | null;
+        supports_parallel_tool_calls?: boolean;
+        deprecation_info?: {
+          is_deprecated?: boolean;
+          is_in_warning_period?: boolean;
         } | null;
-      }>(apiKey, "/v1/convai/settings").catch(() => ({ webhooks: null })),
-      configuredAgentId
-        ? elevenLabsRequest<AgentDetailResponse>(
-            apiKey,
-            `/v1/convai/agents/${encodeURIComponent(configuredAgentId)}`
-          ).catch(() => null)
-        : Promise.resolve(null),
-    ]);
+      }>;
+    }>(apiKey, "/v1/convai/llm/list").catch(() => ({ llms: [] })),
+    elevenLabsRequest<
+      Array<{
+        model_id?: string;
+        name?: string;
+        can_do_text_to_speech?: boolean;
+        description?: string;
+        languages?: Array<{ language_id?: string; name?: string }>;
+      }>
+    >(apiKey, "/v1/models").catch(() => []),
+    listAllAgents(apiKey),
+    listAllTools(apiKey),
+    elevenLabsRequest<{
+      webhooks?: Array<{
+        webhook_id: string;
+        name: string;
+        webhook_url: string;
+        auth_type: string;
+        is_disabled?: boolean;
+        is_auto_disabled?: boolean;
+      }>;
+    }>(apiKey, "/v1/workspace/webhooks").catch(() => ({ webhooks: [] })),
+    elevenLabsRequest<{
+      webhooks?: {
+        post_call_webhook_id?: string | null;
+        events?: string[] | null;
+      } | null;
+    }>(apiKey, "/v1/convai/settings").catch(() => ({ webhooks: null })),
+    configuredAgentId
+      ? elevenLabsRequest<AgentDetailResponse>(
+          apiKey,
+          `/v1/convai/agents/${encodeURIComponent(configuredAgentId)}`
+        ).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   const phoneNumbers: ElevenLabsPhoneNumberItem[] = (Array.isArray(rawPhoneNumbers) ? rawPhoneNumbers : []).map(
     (item) => ({
@@ -882,6 +948,45 @@ export async function listElevenLabsAccountResources(
     category: v.category ?? null,
     labels: v.labels ?? {},
   }));
+
+  const llmModels: ElevenLabsLlmModelItem[] = (Array.isArray(rawLlmsRes?.llms) ? rawLlmsRes.llms : [])
+    .filter(
+      (item): item is NonNullable<typeof item> & { llm: string } =>
+        Boolean(item) && typeof item.llm === "string" && item.llm.trim().length > 0
+    )
+    .map((item) => ({
+      llm: item.llm.trim(),
+      maxContextLimit: typeof item.max_context_limit === "number" ? item.max_context_limit : null,
+      maxTokensLimit: typeof item.max_tokens_limit === "number" ? item.max_tokens_limit : null,
+      supportsParallelToolCalls: Boolean(item.supports_parallel_tool_calls),
+      isDeprecated: Boolean(item.deprecation_info?.is_deprecated),
+      isInWarningPeriod: Boolean(item.deprecation_info?.is_in_warning_period),
+    }))
+    .sort((a, b) => Number(a.isDeprecated) - Number(b.isDeprecated));
+
+  const ttsModels: ElevenLabsTtsModelItem[] = (Array.isArray(rawModels) ? rawModels : [])
+    .filter(
+      (item): item is typeof item & { model_id: string } =>
+        Boolean(item.can_do_text_to_speech) && typeof item.model_id === "string" && item.model_id.trim().length > 0
+    )
+    .map((item) => {
+      const modelId = item.model_id.trim();
+      const supportsPortuguese =
+        Array.isArray(item.languages) &&
+        item.languages.some((l) => (l.language_id ?? "").toLowerCase().startsWith("pt"));
+      const isLowLatency = /(flash|turbo|conversational|_v4)/i.test(modelId);
+      return {
+        modelId,
+        name: item.name?.trim() || modelId,
+        description: item.description?.trim() || "",
+        supportsPortuguese,
+        isLowLatency,
+      };
+    })
+    .sort((a, b) => {
+      const score = (m: ElevenLabsTtsModelItem) => (m.supportsPortuguese ? 2 : 0) + (m.isLowLatency ? 1 : 0);
+      return score(b) - score(a);
+    });
 
   const prefixWithSep = `${currentPrefix}_`;
   const prefixedToolNames = tools
@@ -906,6 +1011,8 @@ export async function listElevenLabsAccountResources(
     phoneNumbers,
     sipPhoneNumbers,
     voices,
+    llmModels,
+    ttsModels,
     agents,
     prefixedToolsCount: prefixedToolNames.length,
     prefixedToolNames,
@@ -913,12 +1020,17 @@ export async function listElevenLabsAccountResources(
     activeAgentWebhookEvents: Array.isArray(agentWebhookOverride?.events)
       ? agentWebhookOverride.events
       : [],
+    activeAgentLlmModel: agentDetail?.conversation_config?.agent?.prompt?.llm?.trim() || null,
+    activeAgentTtsModelId: agentDetail?.conversation_config?.tts?.model_id?.trim() || null,
+    activeAgentVoiceId: agentDetail?.conversation_config?.tts?.voice_id?.trim() || null,
     activeWorkspaceWebhookId: convaiSettings.webhooks?.post_call_webhook_id ?? null,
     webhooks,
     currentPrefix,
     configuredAgentId,
     configuredPhoneNumberId: settings.elevenLabsPhoneNumberId,
     configuredWebhookId: settings.elevenLabsWebhookId,
+    configuredLlmModel: settings.elevenLabsLlmModel,
+    configuredTtsModelId: settings.elevenLabsTtsModelId,
     hasWebhookSecret: Boolean(settings.elevenLabsWebhookSecret.trim()),
   };
 }
@@ -947,9 +1059,20 @@ export async function provisionElevenLabsResources(
     );
   }
 
+  const hasExplicitLlm = input.llmModel !== undefined;
+  const hasExplicitTts = input.ttsModelId !== undefined;
+  const requestedLlmModel = (hasExplicitLlm ? input.llmModel : settings.elevenLabsLlmModel ?? "").trim();
+  const requestedTtsModelId = (hasExplicitTts ? input.ttsModelId : settings.elevenLabsTtsModelId ?? "").trim();
+
   const basePersistPatch: Record<string, unknown> = {
     elevenLabsResourcePrefix: prefix,
   };
+  if (hasExplicitLlm) {
+    basePersistPatch.elevenLabsLlmModel = requestedLlmModel;
+  }
+  if (hasExplicitTts) {
+    basePersistPatch.elevenLabsTtsModelId = requestedTtsModelId;
+  }
   if (input.apiKey && input.apiKey.trim() && input.apiKey.trim() !== MASKED_SECRET_SENTINEL) {
     basePersistPatch.elevenLabsApiKey = input.apiKey.trim();
   }
@@ -1138,6 +1261,8 @@ export async function provisionElevenLabsResources(
   let agentId: string;
   let agentAction: "created" | "updated";
   let effectiveVoiceId: string | null = requestedVoiceId || matchedExistingAgent?.voiceId || null;
+  let effectiveLlmModel: string | null = requestedLlmModel || null;
+  let effectiveTtsModelId: string | null = requestedTtsModelId || null;
 
   if (matchedExistingAgent) {
     // Preserva tools extras/system tools já vinculadas manualmente ao agente (fora do nosso prefixo)
@@ -1145,6 +1270,16 @@ export async function provisionElevenLabsResources(
       apiKey,
       `/v1/convai/agents/${encodeURIComponent(matchedExistingAgent.agentId)}`
     ).catch(() => null);
+
+    if (!effectiveVoiceId) {
+      effectiveVoiceId = currentAgentDetail?.conversation_config?.tts?.voice_id?.trim() || null;
+    }
+    if (!effectiveLlmModel) {
+      effectiveLlmModel = currentAgentDetail?.conversation_config?.agent?.prompt?.llm?.trim() || null;
+    }
+    if (!effectiveTtsModelId) {
+      effectiveTtsModelId = currentAgentDetail?.conversation_config?.tts?.model_id?.trim() || null;
+    }
 
     const existingToolIds = currentAgentDetail?.conversation_config?.agent?.prompt?.tool_ids ?? [];
     const prefixWithSep = `${prefix}_`;
@@ -1160,6 +1295,9 @@ export async function provisionElevenLabsResources(
     if (savedVoicePrompt) {
       promptPatch.prompt = savedVoicePrompt;
     }
+    if (requestedLlmModel) {
+      promptPatch.llm = requestedLlmModel;
+    }
 
     const agentPatch: Record<string, unknown> = {
       language: "pt",
@@ -1172,8 +1310,15 @@ export async function provisionElevenLabsResources(
     const conversationConfigPatch: Record<string, unknown> = {
       agent: agentPatch,
     };
+    const ttsPatch: Record<string, unknown> = {};
     if (requestedVoiceId) {
-      conversationConfigPatch.tts = { voice_id: requestedVoiceId };
+      ttsPatch.voice_id = requestedVoiceId;
+    }
+    if (requestedTtsModelId) {
+      ttsPatch.model_id = requestedTtsModelId;
+    }
+    if (Object.keys(ttsPatch).length > 0) {
+      conversationConfigPatch.tts = ttsPatch;
     }
 
     await elevenLabsRequest(apiKey, `/v1/convai/agents/${encodeURIComponent(matchedExistingAgent.agentId)}`, {
@@ -1188,11 +1333,22 @@ export async function provisionElevenLabsResources(
     agentId = matchedExistingAgent.agentId;
     agentAction = "updated";
   } else {
+    const chosenTtsModelId = requestedTtsModelId || "eleven_flash_v2_5";
+    effectiveTtsModelId = chosenTtsModelId;
+
     const ttsCreate: Record<string, unknown> = {
-      model_id: "eleven_flash_v2_5",
+      model_id: chosenTtsModelId,
     };
     if (requestedVoiceId) {
       ttsCreate.voice_id = requestedVoiceId;
+    }
+
+    const promptCreate: Record<string, unknown> = {
+      prompt: savedVoicePrompt || DEFAULT_VOICE_PROMPT,
+      tool_ids: syncedToolIds,
+    };
+    if (requestedLlmModel) {
+      promptCreate.llm = requestedLlmModel;
     }
 
     const createdAgent = await elevenLabsRequest<{ agent_id: string }>(apiKey, "/v1/convai/agents/create", {
@@ -1204,10 +1360,7 @@ export async function provisionElevenLabsResources(
           agent: {
             language: "pt",
             first_message: savedFirstMessage || DEFAULT_FIRST_MESSAGE,
-            prompt: {
-              prompt: savedVoicePrompt || DEFAULT_VOICE_PROMPT,
-              tool_ids: syncedToolIds,
-            },
+            prompt: promptCreate,
           },
           tts: ttsCreate,
         },
@@ -1261,6 +1414,8 @@ export async function provisionElevenLabsResources(
       prefix,
       agentId,
       agentAction,
+      llmModel: effectiveLlmModel,
+      ttsModelId: effectiveTtsModelId,
       secretAction,
       toolsCreated,
       toolsUpdated,
@@ -1291,6 +1446,8 @@ export async function provisionElevenLabsResources(
       name: agentName,
       action: agentAction,
       voiceId: effectiveVoiceId,
+      llmModel: effectiveLlmModel,
+      ttsModelId: effectiveTtsModelId,
     },
     webhook: {
       webhookId,

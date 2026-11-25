@@ -5,6 +5,7 @@ import { listElevenLabsAccountResources } from "@jonas/shared";
 const ResourcesRequestSchema = z.object({
   apiKey: z.string().optional(),
   prefix: z.string().optional(),
+  agentId: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -17,7 +18,8 @@ export async function POST(req: NextRequest) {
   try {
     const resources = await listElevenLabsAccountResources(
       parsed.data.apiKey,
-      parsed.data.prefix
+      parsed.data.prefix,
+      parsed.data.agentId
     );
     return NextResponse.json({ ok: true, resources });
   } catch (err: unknown) {

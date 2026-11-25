@@ -23,13 +23,33 @@ export function formatE164Phone(phone: string): string {
   return `+${normalized}`;
 }
 
+export const LEAD_DYNAMIC_VARIABLE_KEYS = [
+  "lead_id",
+  "client_id",
+  "phone",
+  "name",
+  "raw_document",
+  "email",
+  "secondary_phone",
+  "street",
+  "number",
+  "complement",
+  "neighborhood",
+  "city",
+  "state",
+  "cep",
+  "full_address",
+] as const;
+
+export type LeadDynamicVariableKey = (typeof LEAD_DYNAMIC_VARIABLE_KEYS)[number];
+
 /**
  * Monta as dynamic_variables enviadas na inicialização da chamada ElevenLabs.
  */
 export function buildLeadDynamicVariables(
   lead: ProspectLead,
   clientId: string
-): Record<string, string> {
+): Record<LeadDynamicVariableKey, string> {
   const streetAndNumber = [lead.street, lead.number].filter(Boolean).join(", ");
   const fullAddress = [
     streetAndNumber,

@@ -38,6 +38,8 @@ const SettingsUpdateSchema = z.object({
   elevenLabsPhoneNumberId: z.string().optional(),
   elevenLabsWebhookSecret: z.string().optional(),
   elevenLabsResourcePrefix: z.string().max(40).optional(),
+  elevenLabsLlmModel: z.string().max(120).optional(),
+  elevenLabsTtsModelId: z.string().max(120).optional(),
   agentWebhookUrl: emptyOrUrl.optional(),
   outboundWebhookUrl: emptyOrUrl.optional(),
   contractWebhookUrl: emptyOrUrl.optional(),

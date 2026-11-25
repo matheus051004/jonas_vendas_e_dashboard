@@ -35,6 +35,8 @@ export interface ElevenLabsFormFields {
   elevenLabsWebhookId: string;
   elevenLabsWebhookSecret: string;
   elevenLabsResourcePrefix: string;
+  elevenLabsLlmModel: string;
+  elevenLabsTtsModelId: string;
 }
 
 interface PhoneNumberItem {
@@ -55,6 +57,23 @@ interface VoiceItem {
   labels: Record<string, string>;
 }
 
+interface LlmModelItem {
+  llm: string;
+  maxContextLimit: number | null;
+  maxTokensLimit: number | null;
+  supportsParallelToolCalls: boolean;
+  isDeprecated: boolean;
+  isInWarningPeriod: boolean;
+}
+
+interface TtsModelItem {
+  modelId: string;
+  name: string;
+  description: string;
+  supportsPortuguese: boolean;
+  isLowLatency: boolean;
+}
+
 interface AgentSummary {
   agentId: string;
   name: string;
@@ -66,16 +85,23 @@ interface AccountResources {
   phoneNumbers: PhoneNumberItem[];
   sipPhoneNumbers: PhoneNumberItem[];
   voices: VoiceItem[];
+  llmModels: LlmModelItem[];
+  ttsModels: TtsModelItem[];
   agents: AgentSummary[];
   prefixedToolsCount: number;
   prefixedToolNames: string[];
   activeAgentWebhookId: string | null;
   activeAgentWebhookEvents: string[];
+  activeAgentLlmModel: string | null;
+  activeAgentTtsModelId: string | null;
+  activeAgentVoiceId: string | null;
   activeWorkspaceWebhookId: string | null;
   currentPrefix: string;
   configuredAgentId: string;
   configuredPhoneNumberId: string;
   configuredWebhookId: string;
+  configuredLlmModel: string;
+  configuredTtsModelId: string;
   hasWebhookSecret: boolean;
 }
 
@@ -84,7 +110,14 @@ interface ProvisionResult {
   publicBaseUrl: string;
   secret: { secretId: string; name: string; action: "created" | "updated" };
   tools: { total: number; created: number; updated: number; names: string[]; ids: string[] };
-  agent: { agentId: string; name: string; action: "created" | "updated"; voiceId: string | null };
+  agent: {
+    agentId: string;
+    name: string;
+    action: "created" | "updated";
+    voiceId: string | null;
+    llmModel: string | null;
+    ttsModelId: string | null;
+  };
   webhook: {
     webhookId: string;
     name: string;
@@ -212,6 +245,7 @@ export function ElevenLabsSection({
   const [provisionResult, setProvisionResult] = React.useState<ProvisionResult | null>(null);
 
   const autoLoadedRef = React.useRef(false);
+  const modelsTouchedRef = React.useRef(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -227,6 +261,7 @@ export function ElevenLabsSection({
         prefix?: string;
         agentId?: string;
         phoneNumberId?: string;
+        skipPrefill?: boolean;
       }
     ) => {
       const effectiveApiKey = (overrides?.apiKey ?? form.elevenLabsApiKey).trim();
@@ -250,6 +285,7 @@ export function ElevenLabsSection({
           body: JSON.stringify({
             apiKey: effectiveApiKey,
             prefix: effectivePrefix,
+            agentId: effectiveAgentId,
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -264,18 +300,31 @@ export function ElevenLabsSection({
 
         if (!selectedVoiceId && effectiveAgentId) {
           const currentAgent = loaded.agents.find((a) => a.agentId === effectiveAgentId);
-          if (currentAgent?.voiceId) {
-            setSelectedVoiceId(currentAgent.voiceId);
+          const resolvedVoiceId = loaded.activeAgentVoiceId || currentAgent?.voiceId;
+          if (resolvedVoiceId) {
+            setSelectedVoiceId(resolvedVoiceId);
           }
         }
 
+        const fieldPatch: Partial<ElevenLabsFormFields> = {};
         if (!effectivePhoneId && loaded.sipPhoneNumbers.length === 1) {
-          onFieldChange({ elevenLabsPhoneNumberId: loaded.sipPhoneNumbers[0].phoneNumberId });
+          fieldPatch.elevenLabsPhoneNumberId = loaded.sipPhoneNumbers[0].phoneNumberId;
+        }
+        if (!overrides?.skipPrefill && !modelsTouchedRef.current) {
+          if (!form.elevenLabsLlmModel.trim() && loaded.activeAgentLlmModel) {
+            fieldPatch.elevenLabsLlmModel = loaded.activeAgentLlmModel;
+          }
+          if (!form.elevenLabsTtsModelId.trim() && loaded.activeAgentTtsModelId) {
+            fieldPatch.elevenLabsTtsModelId = loaded.activeAgentTtsModelId;
+          }
+        }
+        if (Object.keys(fieldPatch).length > 0) {
+          onFieldChange(fieldPatch);
         }
 
         if (!silent) {
           onNotify(
-            `Recursos carregados: ${loaded.sipPhoneNumbers.length} número(s) SIP e ${loaded.voices.length} voz(es).`
+            `Recursos carregados: ${loaded.sipPhoneNumbers.length} SIP, ${loaded.voices.length} voz(es), ${loaded.llmModels.length} LLM(s) e ${loaded.ttsModels.length} modelo(s) de voz.`
           );
         }
       } catch (err: unknown) {
@@ -291,6 +340,8 @@ export function ElevenLabsSection({
       form.elevenLabsAgentId,
       form.elevenLabsPhoneNumberId,
       form.elevenLabsResourcePrefix,
+      form.elevenLabsLlmModel,
+      form.elevenLabsTtsModelId,
       onFieldChange,
       onNotify,
       selectedVoiceId,
@@ -330,6 +381,8 @@ export function ElevenLabsSection({
           publicBaseUrl: publicBaseUrl.trim(),
           prefix: form.elevenLabsResourcePrefix,
           voiceId: selectedVoiceId || undefined,
+          llmModel: form.elevenLabsLlmModel.trim(),
+          ttsModelId: form.elevenLabsTtsModelId.trim(),
           phoneNumberId: form.elevenLabsPhoneNumberId.trim() || undefined,
           agentId: form.elevenLabsAgentId.trim() || undefined,
           recreateWebhook,
@@ -352,6 +405,8 @@ export function ElevenLabsSection({
       const syncedWebhookSecret =
         data.settings?.elevenLabsWebhookSecret ?? form.elevenLabsWebhookSecret;
       const syncedPrefix = data.settings?.elevenLabsResourcePrefix ?? result.prefix;
+      const syncedLlmModel = data.settings?.elevenLabsLlmModel ?? form.elevenLabsLlmModel;
+      const syncedTtsModelId = data.settings?.elevenLabsTtsModelId ?? form.elevenLabsTtsModelId;
 
       // Marca como já carregado antes de atualizar estado para evitar disparo duplicado do useEffect
       autoLoadedRef.current = true;
@@ -362,6 +417,8 @@ export function ElevenLabsSection({
         elevenLabsWebhookId: syncedWebhookId,
         elevenLabsWebhookSecret: syncedWebhookSecret,
         elevenLabsResourcePrefix: syncedPrefix,
+        elevenLabsLlmModel: syncedLlmModel,
+        elevenLabsTtsModelId: syncedTtsModelId,
       });
 
       onNotify("Provisionamento na ElevenLabs concluído com sucesso!");
@@ -370,6 +427,7 @@ export function ElevenLabsSection({
         prefix: syncedPrefix,
         agentId: syncedAgentId,
         phoneNumberId: syncedPhoneId,
+        skipPrefill: true,
       });
     } catch (err: unknown) {
       setProvisionError(
@@ -442,7 +500,7 @@ export function ElevenLabsSection({
           startIcon={loadingResources ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
           sx={{ minWidth: 210, height: 56, flexShrink: 0 }}
         >
-          {loadingResources ? "Carregando..." : "Carregar SIP e vozes"}
+          {loadingResources ? "Carregando..." : "Carregar recursos"}
         </Button>
       </Stack>
 
@@ -450,7 +508,8 @@ export function ElevenLabsSection({
 
       {resources && (
         <Typography variant="caption" color="text.secondary">
-          Conta conectada: {resources.sipPhoneNumbers.length} número(s) SIP ·{" "}
+          Conta conectada: {resources.sipPhoneNumbers.length} SIP · {resources.voices.length} voz(es) ·{" "}
+          {resources.llmModels.length} LLM(s) · {resources.ttsModels.length} modelo(s) de voz ·{" "}
           {resources.prefixedToolsCount} tool(s) ({resources.currentPrefix}_*) · {webhookChipLabel}
         </Typography>
       )}
@@ -539,10 +598,13 @@ export function ElevenLabsSection({
           <Grid container spacing={2}>
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth size="small">
-                <InputLabel id="sip-number-select-label">Número SIP Trunk</InputLabel>
+                <InputLabel id="sip-number-select-label" shrink>
+                  Número SIP Trunk
+                </InputLabel>
                 <Select
                   labelId="sip-number-select-label"
                   label="Número SIP Trunk"
+                  notched
                   value={
                     selectablePhoneNumbers.some(
                       (p) => p.phoneNumberId === form.elevenLabsPhoneNumberId
@@ -559,7 +621,7 @@ export function ElevenLabsSection({
                         ? selectablePhoneNumbers.length > 0
                           ? "Selecione um número SIP..."
                           : "Nenhum número SIP encontrado"
-                        : 'Clique em "Carregar SIP e vozes" para listar'}
+                        : 'Clique em "Carregar recursos" para listar'}
                     </em>
                   </MenuItem>
                   {selectablePhoneNumbers.map((item) => (
@@ -584,10 +646,13 @@ export function ElevenLabsSection({
 
             <Grid size={{ xs: 12, sm: 6 }}>
               <FormControl fullWidth size="small">
-                <InputLabel id="elevenlabs-voice-select-label">Voz do Agente (Opcional)</InputLabel>
+                <InputLabel id="elevenlabs-voice-select-label" shrink>
+                  Voz do Agente (Opcional)
+                </InputLabel>
                 <Select
                   labelId="elevenlabs-voice-select-label"
                   label="Voz do Agente (Opcional)"
+                  notched
                   value={
                     resources?.voices.some((v) => v.voiceId === selectedVoiceId)
                       ? selectedVoiceId
@@ -600,7 +665,7 @@ export function ElevenLabsSection({
                     <em>
                       {resources
                         ? "Manter voz atual / padrão"
-                        : 'Clique em "Carregar SIP e vozes" para listar'}
+                        : 'Clique em "Carregar recursos" para listar'}
                     </em>
                   </MenuItem>
                   {(resources?.voices ?? []).map((v) => (
@@ -611,7 +676,139 @@ export function ElevenLabsSection({
                   ))}
                 </Select>
                 <FormHelperText>
-                  Na criação do agente, utiliza o modelo <code>eleven_flash_v2_5</code>.
+                  Voz usada pelo agente nas ligações SIP.
+                </FormHelperText>
+              </FormControl>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControl fullWidth size="small" error={!!fieldErrors.elevenLabsLlmModel}>
+                <InputLabel id="elevenlabs-llm-select-label" shrink>
+                  Modelo de Raciocínio (LLM)
+                </InputLabel>
+                <Select
+                  labelId="elevenlabs-llm-select-label"
+                  label="Modelo de Raciocínio (LLM)"
+                  notched
+                  value={form.elevenLabsLlmModel}
+                  onChange={(e) => {
+                    modelsTouchedRef.current = true;
+                    onFieldChange({ elevenLabsLlmModel: String(e.target.value) });
+                  }}
+                  displayEmpty
+                  renderValue={(value) => {
+                    const v = String(value ?? "");
+                    if (!v) {
+                      return (
+                        <em>
+                          {resources
+                            ? "Manter atual / padrão do agente"
+                            : 'Clique em "Carregar recursos" para listar'}
+                        </em>
+                      );
+                    }
+                    return v;
+                  }}
+                >
+                  <MenuItem value="">
+                    <em>
+                      {resources
+                        ? "Manter atual / padrão do agente"
+                        : 'Clique em "Carregar recursos" para listar'}
+                    </em>
+                  </MenuItem>
+                  {form.elevenLabsLlmModel &&
+                    !resources?.llmModels.some((m) => m.llm === form.elevenLabsLlmModel) && (
+                      <MenuItem value={form.elevenLabsLlmModel}>
+                        {form.elevenLabsLlmModel} (atual / salvo)
+                      </MenuItem>
+                    )}
+                  {(resources?.llmModels ?? []).map((m) => (
+                    <MenuItem key={m.llm} value={m.llm}>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {m.llm}
+                          {m.isDeprecated
+                            ? " (descontinuado)"
+                            : m.isInWarningPeriod
+                              ? " (em aviso de descontinuação)"
+                              : ""}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {m.maxContextLimit ? `Contexto ${Math.round(m.maxContextLimit / 1000)}k` : "LLM ElevenAgents"}
+                          {m.supportsParallelToolCalls ? " · Tools paralelas" : ""}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+                <FormHelperText>
+                  {fieldErrors.elevenLabsLlmModel ??
+                    "Consultado na conta ElevenLabs. Aplicado ao agente ao provisionar."}
+                </FormHelperText>
+              </FormControl>
+            </Grid>
+
+            <Grid size={{ xs: 12, sm: 6 }}>
+              <FormControl fullWidth size="small" error={!!fieldErrors.elevenLabsTtsModelId}>
+                <InputLabel id="elevenlabs-tts-select-label" shrink>
+                  Modelo de Voz (TTS)
+                </InputLabel>
+                <Select
+                  labelId="elevenlabs-tts-select-label"
+                  label="Modelo de Voz (TTS)"
+                  notched
+                  value={form.elevenLabsTtsModelId}
+                  onChange={(e) => {
+                    modelsTouchedRef.current = true;
+                    onFieldChange({ elevenLabsTtsModelId: String(e.target.value) });
+                  }}
+                  displayEmpty
+                  renderValue={(value) => {
+                    const v = String(value ?? "");
+                    if (!v) {
+                      return (
+                        <em>
+                          {resources
+                            ? "Manter atual / eleven_flash_v2_5 na criação"
+                            : 'Clique em "Carregar recursos" para listar'}
+                        </em>
+                      );
+                    }
+                    const found = resources?.ttsModels.find((m) => m.modelId === v);
+                    return found ? `${found.name} (${found.modelId})` : v;
+                  }}
+                >
+                  <MenuItem value="">
+                    <em>
+                      {resources
+                        ? "Manter atual / eleven_flash_v2_5 na criação"
+                        : 'Clique em "Carregar recursos" para listar'}
+                    </em>
+                  </MenuItem>
+                  {form.elevenLabsTtsModelId &&
+                    !resources?.ttsModels.some((m) => m.modelId === form.elevenLabsTtsModelId) && (
+                      <MenuItem value={form.elevenLabsTtsModelId}>
+                        {form.elevenLabsTtsModelId} (atual / salvo)
+                      </MenuItem>
+                    )}
+                  {(resources?.ttsModels ?? []).map((m) => (
+                    <MenuItem key={m.modelId} value={m.modelId}>
+                      <Box>
+                        <Typography variant="body2" fontWeight={600}>
+                          {m.name} ({m.modelId})
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {m.supportsPortuguese ? "Suporta português" : "Sem suporte explícito a PT"}
+                          {m.isLowLatency ? " · Baixa latência" : ""}
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+                <FormHelperText>
+                  {fieldErrors.elevenLabsTtsModelId ??
+                    "Consultado na conta ElevenLabs. Para ligações ao vivo, prefira modelos Flash/Turbo com suporte a PT."}
                 </FormHelperText>
               </FormControl>
             </Grid>
@@ -668,6 +865,14 @@ export function ElevenLabsSection({
                   <code>{provisionResult.agent.agentId}</code> —{" "}
                   {provisionResult.agent.action === "created" ? "criado" : "atualizado"})
                 </div>
+                {(provisionResult.agent.llmModel || provisionResult.agent.ttsModelId) && (
+                  <div>
+                    • <strong>Modelos aplicados:</strong>{" "}
+                    {provisionResult.agent.llmModel ? `LLM ${provisionResult.agent.llmModel}` : "LLM padrão"}
+                    {" · "}
+                    {provisionResult.agent.ttsModelId ? `TTS ${provisionResult.agent.ttsModelId}` : "TTS padrão"}
+                  </div>
+                )}
                 <div>
                   • <strong>Webhook pós-chamada:</strong> <code>{provisionResult.webhook.url}</code> (
                   {provisionResult.webhook.action === "created" ? "criado" : "reutilizado"}

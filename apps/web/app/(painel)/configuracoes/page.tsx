@@ -45,6 +45,7 @@ import { formatMinutes, DEFAULT_FOLLOW_UP_INTERVALS } from "@/lib/formatters";
 import Grid from "@mui/material/Grid2";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ImageIcon from "@mui/icons-material/Image";
+import type { LeadDynamicVariableKey } from "@jonas/shared";
 
 interface Settings {
   brandName: string;
@@ -62,6 +63,8 @@ interface Settings {
   elevenLabsWebhookId: string;
   elevenLabsWebhookSecret: string;
   elevenLabsResourcePrefix: string;
+  elevenLabsLlmModel: string;
+  elevenLabsTtsModelId: string;
   agentWebhookUrl: string;
   outboundWebhookUrl: string;
   contractWebhookUrl: string;
@@ -93,12 +96,40 @@ const PROMPT_FIELDS: (keyof Settings)[] = [
   "textAiPrompt",
 ];
 
+const ELEVENLABS_DYNAMIC_VARIABLE_DESCRIPTIONS: Record<LeadDynamicVariableKey, string> = {
+  name: "Nome / razão social do lead",
+  phone: "Telefone principal normalizado (DDI+DDD+número)",
+  raw_document: "CPF/CNPJ extraído da planilha (ou vazio)",
+  email: "E-mail do lead (ou vazio)",
+  secondary_phone: "Telefone secundário (ou vazio)",
+  street: "Logradouro / rua (ou vazio)",
+  number: "Número do endereço (ou vazio)",
+  complement: "Complemento / sala / loja (ou vazio)",
+  neighborhood: "Bairro (ou vazio)",
+  city: "Cidade (ou vazio)",
+  state: "UF / Estado (ou vazio)",
+  cep: "CEP (ou vazio)",
+  full_address: "Endereço completo formatado em uma linha",
+  lead_id: "ID do lead na fila de prospecção",
+  client_id: "ID do cliente criado no CRM",
+};
+
+const ELEVENLABS_DYNAMIC_VARIABLES = (
+  Object.entries(ELEVENLABS_DYNAMIC_VARIABLE_DESCRIPTIONS) as [LeadDynamicVariableKey, string][]
+).map(([key, description]) => ({
+  key,
+  token: `{{${key}}}`,
+  description,
+}));
+
 const ELEVENLABS_FIELDS: (keyof Settings)[] = [
   "elevenLabsApiKey",
   "elevenLabsAgentId",
   "elevenLabsPhoneNumberId",
   "elevenLabsWebhookSecret",
   "elevenLabsResourcePrefix",
+  "elevenLabsLlmModel",
+  "elevenLabsTtsModelId",
 ];
 
 const FOLLOWUP_FIELDS: (keyof Settings)[] = [
@@ -392,6 +423,8 @@ export default function ConfiguracoesPage() {
           elevenLabsWebhookId: data.elevenLabsWebhookId ?? "",
           elevenLabsWebhookSecret: data.elevenLabsWebhookSecret ?? "",
           elevenLabsResourcePrefix: data.elevenLabsResourcePrefix || "painel_vendas",
+          elevenLabsLlmModel: data.elevenLabsLlmModel ?? "",
+          elevenLabsTtsModelId: data.elevenLabsTtsModelId ?? "",
           agentWebhookUrl: data.agentWebhookUrl ?? "",
           outboundWebhookUrl: data.outboundWebhookUrl ?? "",
           contractWebhookUrl: data.contractWebhookUrl ?? "",
@@ -533,6 +566,8 @@ export default function ConfiguracoesPage() {
               elevenLabsWebhookId: saved.elevenLabsWebhookId ?? prev.elevenLabsWebhookId,
               elevenLabsWebhookSecret: saved.elevenLabsWebhookSecret ?? prev.elevenLabsWebhookSecret,
               elevenLabsResourcePrefix: saved.elevenLabsResourcePrefix ?? prev.elevenLabsResourcePrefix,
+              elevenLabsLlmModel: saved.elevenLabsLlmModel ?? prev.elevenLabsLlmModel,
+              elevenLabsTtsModelId: saved.elevenLabsTtsModelId ?? prev.elevenLabsTtsModelId,
             }
           : prev
       );
@@ -597,14 +632,41 @@ export default function ConfiguracoesPage() {
     });
   }
 
-  const copyUrl = React.useCallback(async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setSnackbar({ open: true, message: "URL copiada para a área de transferência" });
-    } catch {
-      setSnackbar({ open: true, message: "Não foi possível copiar a URL" });
-    }
-  }, []);
+  const copyToClipboard = React.useCallback(
+    (text: string, successMessage: string, errorMessage: string): void => {
+      void (async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setSnackbar({ open: true, message: successMessage });
+        } catch {
+          setSnackbar({ open: true, message: errorMessage });
+        }
+      })();
+    },
+    []
+  );
+
+  const copyUrl = React.useCallback(
+    (url: string): void => {
+      copyToClipboard(
+        url,
+        "URL copiada para a área de transferência",
+        "Não foi possível copiar a URL"
+      );
+    },
+    [copyToClipboard]
+  );
+
+  const copyVariable = React.useCallback(
+    (token: string): void => {
+      copyToClipboard(
+        token,
+        `Variável ${token} copiada para a área de transferência`,
+        "Não foi possível copiar a variável"
+      );
+    },
+    [copyToClipboard]
+  );
 
   const handleElevenLabsFieldChange = React.useCallback((changes: Partial<Settings>) => {
     setForm((prev) => (prev ? { ...prev, ...changes } : prev));
@@ -613,13 +675,6 @@ export default function ConfiguracoesPage() {
   const handleNotify = React.useCallback((message: string) => {
     setSnackbar({ open: true, message });
   }, []);
-
-  const handleCopyUrlVoid = React.useCallback(
-    (url: string) => {
-      void copyUrl(url);
-    },
-    [copyUrl]
-  );
 
   if (!form) {
     return (
@@ -877,7 +932,7 @@ export default function ConfiguracoesPage() {
                 endAdornment: (
                   <InputAdornment position="end">
                     <Tooltip title="Copiar URL">
-                      <IconButton edge="end" onClick={() => void copyUrl(agentPromptUrl)}>
+                      <IconButton edge="end" onClick={() => copyUrl(agentPromptUrl)}>
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -921,11 +976,50 @@ export default function ConfiguracoesPage() {
               error={!!fieldErrors.voiceFirstMessage}
               helperText={
                 fieldErrors.voiceFirstMessage ??
-                "Variáveis disponíveis: {{name}}, {{phone}}, {{raw_document}}, {{neighborhood}}, {{city}}, {{full_address}}."
+                "Aceita qualquer uma das variáveis dinâmicas listadas abaixo (ex.: {{name}}, {{neighborhood}}, {{full_address}})."
               }
               placeholder="Olá {{name}}, tudo bem? Aqui é da equipe de atendimento, estou falando com o responsável?"
               onChange={(e) => setForm({ ...form, voiceFirstMessage: e.target.value })}
             />
+
+            <Paper variant="outlined" sx={{ p: 2, bgcolor: "action.hover" }}>
+              <Stack spacing={1.25}>
+                <Box>
+                  <Typography variant="subtitle2" fontWeight={600}>
+                    Variáveis dinâmicas enviadas para a ElevenLabs ({ELEVENLABS_DYNAMIC_VARIABLES.length})
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Disponíveis com {"{{variavel}}"} tanto na Saudação Inicial quanto no Prompt de Voz. Clique em qualquer variável para copiar.
+                  </Typography>
+                </Box>
+                <Grid container spacing={1.25}>
+                  {ELEVENLABS_DYNAMIC_VARIABLES.map((v) => (
+                    <Grid key={v.key} size={{ xs: 12, sm: 6 }}>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+                        <Tooltip title={`Copiar ${v.token}`}>
+                          <Chip
+                            size="small"
+                            label={v.token}
+                            onClick={() => copyVariable(v.token)}
+                            icon={<ContentCopyIcon sx={{ fontSize: 13 }} />}
+                            variant="outlined"
+                            sx={{
+                              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+                              fontSize: 12,
+                              bgcolor: "background.paper",
+                              flexShrink: 0,
+                            }}
+                          />
+                        </Tooltip>
+                        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.3 }}>
+                          {v.description}
+                        </Typography>
+                      </Stack>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Stack>
+            </Paper>
 
             <TextField
               label="Endpoint do Prompt de Voz (GET)"
@@ -937,7 +1031,7 @@ export default function ConfiguracoesPage() {
                 endAdornment: (
                   <InputAdornment position="end">
                     <Tooltip title="Copiar URL">
-                      <IconButton edge="end" onClick={() => void copyUrl(voicePromptUrl)}>
+                      <IconButton edge="end" onClick={() => copyUrl(voicePromptUrl)}>
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -984,7 +1078,7 @@ export default function ConfiguracoesPage() {
                 endAdornment: (
                   <InputAdornment position="end">
                     <Tooltip title="Copiar URL">
-                      <IconButton edge="end" onClick={() => void copyUrl(textPromptUrl)}>
+                      <IconButton edge="end" onClick={() => copyUrl(textPromptUrl)}>
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -1042,7 +1136,7 @@ export default function ConfiguracoesPage() {
                 endAdornment: (
                   <InputAdornment position="end">
                     <Tooltip title="Copiar URL">
-                      <IconButton edge="end" onClick={() => void copyUrl(inboundUrl)} aria-label="Copiar URL">
+                      <IconButton edge="end" onClick={() => copyUrl(inboundUrl)} aria-label="Copiar URL">
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -1061,7 +1155,7 @@ export default function ConfiguracoesPage() {
                 endAdornment: (
                   <InputAdornment position="end">
                     <Tooltip title="Copiar URL">
-                      <IconButton edge="end" onClick={() => void copyUrl(agentReplyUrl)} aria-label="Copiar URL de reply">
+                      <IconButton edge="end" onClick={() => copyUrl(agentReplyUrl)} aria-label="Copiar URL de reply">
                         <ContentCopyIcon fontSize="small" />
                       </IconButton>
                     </Tooltip>
@@ -1136,12 +1230,14 @@ export default function ConfiguracoesPage() {
                 elevenLabsWebhookId: form.elevenLabsWebhookId,
                 elevenLabsWebhookSecret: form.elevenLabsWebhookSecret,
                 elevenLabsResourcePrefix: form.elevenLabsResourcePrefix,
+                elevenLabsLlmModel: form.elevenLabsLlmModel,
+                elevenLabsTtsModelId: form.elevenLabsTtsModelId,
               }}
               fieldErrors={fieldErrors}
               onFieldChange={handleElevenLabsFieldChange}
               onSettingsSynced={handleElevenLabsFieldChange}
               onSaveManual={handleSaveElevenLabs}
-              onCopyUrl={handleCopyUrlVoid}
+              onCopyUrl={copyUrl}
               onNotify={handleNotify}
             />
           </SectionCard>
