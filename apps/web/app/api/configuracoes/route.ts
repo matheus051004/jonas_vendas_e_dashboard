@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getSettings, updateSettings } from "@jonas/shared";
+import {
+  MASKED_SECRET_SENTINEL,
+  getSettings,
+  normalizeElevenLabsPrefix,
+  updateSettings,
+} from "@jonas/shared";
 
 const emptyOrUrl = z.union([z.string().url(), z.literal("")]);
 
@@ -32,6 +37,7 @@ const SettingsUpdateSchema = z.object({
   elevenLabsAgentId: z.string().optional(),
   elevenLabsPhoneNumberId: z.string().optional(),
   elevenLabsWebhookSecret: z.string().optional(),
+  elevenLabsResourcePrefix: z.string().max(40).optional(),
   agentWebhookUrl: emptyOrUrl.optional(),
   outboundWebhookUrl: emptyOrUrl.optional(),
   contractWebhookUrl: emptyOrUrl.optional(),
@@ -48,15 +54,13 @@ const SettingsUpdateSchema = z.object({
   hubsoftServicoStatusId: z.number().int().positive().optional(),
 });
 
-const MASKED_SECRET = "••••••••";
-
 function sanitizeSettingsForResponse<
   T extends { elevenLabsApiKey?: string; elevenLabsWebhookSecret?: string }
 >(settings: T): T {
   return {
     ...settings,
-    elevenLabsApiKey: settings.elevenLabsApiKey ? MASKED_SECRET : "",
-    elevenLabsWebhookSecret: settings.elevenLabsWebhookSecret ? MASKED_SECRET : "",
+    elevenLabsApiKey: settings.elevenLabsApiKey ? MASKED_SECRET_SENTINEL : "",
+    elevenLabsWebhookSecret: settings.elevenLabsWebhookSecret ? MASKED_SECRET_SENTINEL : "",
   };
 }
 
@@ -71,11 +75,16 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   const updateData = { ...parsed.data };
-  if (updateData.elevenLabsApiKey === MASKED_SECRET) {
+  if (updateData.elevenLabsApiKey === MASKED_SECRET_SENTINEL) {
     delete updateData.elevenLabsApiKey;
   }
-  if (updateData.elevenLabsWebhookSecret === MASKED_SECRET) {
+  if (updateData.elevenLabsWebhookSecret === MASKED_SECRET_SENTINEL) {
     delete updateData.elevenLabsWebhookSecret;
+  }
+  if (typeof updateData.elevenLabsResourcePrefix === "string") {
+    updateData.elevenLabsResourcePrefix = normalizeElevenLabsPrefix(
+      updateData.elevenLabsResourcePrefix
+    );
   }
 
   const settings = await updateSettings(updateData);

@@ -111,6 +111,7 @@ export const SettingsElevenLabsSchema = z.object({
   elevenLabsAgentId: z.string(),
   elevenLabsPhoneNumberId: z.string(),
   elevenLabsWebhookSecret: z.string(),
+  elevenLabsResourcePrefix: z.string().max(40, "Máximo 40 caracteres").optional(),
 });
 
 export const SettingsPromptSchema = z.object({

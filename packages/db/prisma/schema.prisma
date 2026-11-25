@@ -303,7 +303,9 @@ model Settings {
   elevenLabsApiKey           String  @default("")
   elevenLabsAgentId          String  @default("")
   elevenLabsPhoneNumberId    String  @default("")
+  elevenLabsWebhookId        String  @default("")
   elevenLabsWebhookSecret    String  @default("")
+  elevenLabsResourcePrefix   String  @default("jonas_painel")
   prospectingTextWebhookUrl  String  @default("")
   isProspectingActive        Boolean @default(false)
 }

@@ -929,7 +929,9 @@ function verifySignature(rawBody, secret, signatureHeader) {
                     { m: "GET", p: "/api/clientes", d: "Lista clientes do CRM" },
                     { m: "GET/PATCH/DELETE", p: "/api/clientes/:id", d: "Detalha, edita ou remove cliente" },
                     { m: "CRUD", p: "/api/planos, /api/pacotes, /api/areas, /api/origens", d: "Cadastros de suporte a vendas" },
-                    { m: "GET/PATCH", p: "/api/configuracoes", d: "Consulta ou atualiza branding, prompts e webhooks" },
+                    { m: "GET/PATCH", p: "/api/configuracoes", d: "Consulta ou atualiza branding, prompts, ElevenLabs e webhooks" },
+                    { m: "POST", p: "/api/elevenlabs/resources", d: "Lista números SIP Trunk, vozes, agentes, tools prefixadas e webhooks da conta ElevenLabs" },
+                    { m: "POST", p: "/api/elevenlabs/provision", d: "Provisiona/sincroniza em 1 clique Secret, 12 Tools (/api/agent/*), Agente de Voz, Webhook HMAC e vínculo SIP com prefixo isolado" },
                   ].map((row) => (
                     <TableRow key={`${row.m}-${row.p}`}>
                       <TableCell>

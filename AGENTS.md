@@ -118,10 +118,12 @@ Serviços em `packages/shared/src/agent-services.ts`.
   - `POST /api/prospeccao/import` (upload de arquivo XLSX)
   - `POST /api/prospeccao/start` (iniciar campanha para todos os pendentes ou seleção)
   - `POST /api/prospeccao/pause` (pausar campanha)
+  - `POST /api/elevenlabs/resources` (descoberta de números SIP Trunk, vozes, agentes, tools prefixadas e webhooks na conta ElevenLabs)
+  - `POST /api/elevenlabs/provision` (provisionamento/sincronização em 1 clique de Secret, 12 webhook tools `/api/agent/*`, Agente de Voz com overrides habilitados, Webhook HMAC pós-chamada e vínculo do número SIP usando `elevenLabsResourcePrefix`)
 
 ### Settings
 
-Linha única `Settings` (`id = "default"`): branding + prompts (`aiPrompt`, `voiceAiPrompt`, `voiceFirstMessage`, `textAiPrompt`) + ElevenLabs (`elevenLabsApiKey`, `elevenLabsAgentId`, `elevenLabsPhoneNumberId`, `elevenLabsWebhookSecret`) + webhooks (`agentWebhookUrl`, `outboundWebhookUrl`, `contractWebhookUrl`, `prospectingTextWebhookUrl`, `outboundWebhookSecret`) + follow-up (`followUpStartTime`, `followUpEndTime` em horário de SP, `followUpIntervals`) + padrões Hubsoft (`hubsoftBaseUrl`, `hubsoftVendedorId`, `hubsoftMotivoContratacaoId`, `hubsoftGruposClienteIds`, `hubsoftGruposServicoIds`, `hubsoftServicoStatusId`) + `isProspectingActive`. Cache 30s em `packages/shared/src/settings.ts`.
+Linha única `Settings` (`id = "default"`): branding + prompts (`aiPrompt`, `voiceAiPrompt`, `voiceFirstMessage`, `textAiPrompt`) + ElevenLabs (`elevenLabsApiKey`, `elevenLabsAgentId`, `elevenLabsPhoneNumberId`, `elevenLabsWebhookId`, `elevenLabsWebhookSecret`, `elevenLabsResourcePrefix`) + webhooks (`agentWebhookUrl`, `outboundWebhookUrl`, `contractWebhookUrl`, `prospectingTextWebhookUrl`, `outboundWebhookSecret`) + follow-up (`followUpStartTime`, `followUpEndTime` em horário de SP, `followUpIntervals`) + padrões Hubsoft (`hubsoftBaseUrl`, `hubsoftVendedorId`, `hubsoftMotivoContratacaoId`, `hubsoftGruposClienteIds`, `hubsoftGruposServicoIds`, `hubsoftServicoStatusId`) + `isProspectingActive`. Cache 30s em `packages/shared/src/settings.ts`.
 
 ### Autenticação do painel
 

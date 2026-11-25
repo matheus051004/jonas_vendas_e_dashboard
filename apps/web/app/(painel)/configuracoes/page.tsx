@@ -32,9 +32,8 @@ import RecordVoiceOverIcon from "@mui/icons-material/RecordVoiceOver";
 import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline";
 import SupportAgentIcon from "@mui/icons-material/SupportAgent";
 import PhoneInTalkIcon from "@mui/icons-material/PhoneInTalk";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import AddIcon from "@mui/icons-material/Add";
+import { ElevenLabsSection } from "./elevenlabs-section";
 import {
   SettingsBrandingSchema,
   SettingsElevenLabsSchema,
@@ -64,7 +63,9 @@ interface Settings {
   elevenLabsApiKey: string;
   elevenLabsAgentId: string;
   elevenLabsPhoneNumberId: string;
+  elevenLabsWebhookId: string;
   elevenLabsWebhookSecret: string;
+  elevenLabsResourcePrefix: string;
   agentWebhookUrl: string;
   outboundWebhookUrl: string;
   contractWebhookUrl: string;
@@ -101,6 +102,7 @@ const ELEVENLABS_FIELDS: (keyof Settings)[] = [
   "elevenLabsAgentId",
   "elevenLabsPhoneNumberId",
   "elevenLabsWebhookSecret",
+  "elevenLabsResourcePrefix",
 ];
 
 const FOLLOWUP_FIELDS: (keyof Settings)[] = [
@@ -361,8 +363,6 @@ export default function ConfiguracoesPage() {
     message: "",
   });
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
-  const [showElevenLabsKey, setShowElevenLabsKey] = React.useState(false);
-  const [showElevenLabsSecret, setShowElevenLabsSecret] = React.useState(false);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -383,7 +383,9 @@ export default function ConfiguracoesPage() {
           elevenLabsApiKey: data.elevenLabsApiKey ?? "",
           elevenLabsAgentId: data.elevenLabsAgentId ?? "",
           elevenLabsPhoneNumberId: data.elevenLabsPhoneNumberId ?? "",
+          elevenLabsWebhookId: data.elevenLabsWebhookId ?? "",
           elevenLabsWebhookSecret: data.elevenLabsWebhookSecret ?? "",
+          elevenLabsResourcePrefix: data.elevenLabsResourcePrefix || "jonas_painel",
           agentWebhookUrl: data.agentWebhookUrl ?? "",
           outboundWebhookUrl: data.outboundWebhookUrl ?? "",
           contractWebhookUrl: data.contractWebhookUrl ?? "",
@@ -418,7 +420,7 @@ export default function ConfiguracoesPage() {
       return { ok: false as const, message: detail ?? "Verifique os campos destacados." };
     }
     setFieldErrors({});
-    return { ok: true as const, message: "Salvo" };
+    return { ok: true as const, message: "Salvo", data: result.data };
   }
 
   async function handleSaveBranding() {
@@ -513,6 +515,22 @@ export default function ConfiguracoesPage() {
     }
 
     const result = await patch(parsed.data);
+    if (result.ok && result.data) {
+      const saved = result.data as Partial<Settings>;
+      setForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              elevenLabsApiKey: saved.elevenLabsApiKey ?? prev.elevenLabsApiKey,
+              elevenLabsAgentId: saved.elevenLabsAgentId ?? prev.elevenLabsAgentId,
+              elevenLabsPhoneNumberId: saved.elevenLabsPhoneNumberId ?? prev.elevenLabsPhoneNumberId,
+              elevenLabsWebhookId: saved.elevenLabsWebhookId ?? prev.elevenLabsWebhookId,
+              elevenLabsWebhookSecret: saved.elevenLabsWebhookSecret ?? prev.elevenLabsWebhookSecret,
+              elevenLabsResourcePrefix: saved.elevenLabsResourcePrefix ?? prev.elevenLabsResourcePrefix,
+            }
+          : prev
+      );
+    }
     setSnackbar({
       open: true,
       message: result.ok ? "Integração ElevenLabs salva com sucesso" : `Erro ao salvar ElevenLabs — ${result.message}`,
@@ -555,14 +573,29 @@ export default function ConfiguracoesPage() {
     });
   }
 
-  async function copyUrl(url: string) {
+  const copyUrl = React.useCallback(async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
       setSnackbar({ open: true, message: "URL copiada para a área de transferência" });
     } catch {
       setSnackbar({ open: true, message: "Não foi possível copiar a URL" });
     }
-  }
+  }, []);
+
+  const handleElevenLabsFieldChange = React.useCallback((changes: Partial<Settings>) => {
+    setForm((prev) => (prev ? { ...prev, ...changes } : prev));
+  }, []);
+
+  const handleNotify = React.useCallback((message: string) => {
+    setSnackbar({ open: true, message });
+  }, []);
+
+  const handleCopyUrlVoid = React.useCallback(
+    (url: string) => {
+      void copyUrl(url);
+    },
+    [copyUrl]
+  );
 
   if (!form) {
     return (
@@ -579,7 +612,6 @@ export default function ConfiguracoesPage() {
   const agentPromptUrl = `${origin}/api/agent/prompt`;
   const voicePromptUrl = `${origin}/api/agent/prompt/voice`;
   const textPromptUrl = `${origin}/api/agent/prompt/text`;
-  const elevenLabsWebhookUrl = `${origin}/api/webhooks/elevenlabs`;
 
   return (
     <Box sx={{ maxWidth: 980 }}>
@@ -989,135 +1021,26 @@ export default function ConfiguracoesPage() {
           {/* ELEVENLABS AGENTS (SIP TRUNK) */}
           <SectionCard
             title="ElevenLabs Agents — Ligações de Voz (SIP Trunk)"
-            description="Credenciais da ElevenLabs usadas diretamente pelo worker para iniciar chamadas via SIP Trunk e validar o retorno pós-chamada."
+            description="Conecte sua conta ElevenLabs, selecione o número SIP Trunk e provisione automaticamente Secret, 12 ferramentas, Agente de Voz e Webhook pós-chamada com prefixo isolado."
             badge={<Chip label="Voz Nativa" color="secondary" size="small" icon={<PhoneInTalkIcon />} />}
           >
-            <TextField
-              label="ElevenLabs API Key (xi-api-key)"
-              fullWidth
-              type={showElevenLabsKey && form.elevenLabsApiKey !== "••••••••" ? "text" : "password"}
-              value={form.elevenLabsApiKey}
-              error={!!fieldErrors.elevenLabsApiKey}
-              helperText={
-                fieldErrors.elevenLabsApiKey ??
-                (form.elevenLabsApiKey === "••••••••"
-                  ? "Chave salva no banco. Digite uma nova chave para substituir ou limpe o campo para remover."
-                  : "Chave da API ElevenLabs (se vazio, utiliza a variável de ambiente ELEVENLABS_API_KEY).")
-              }
-              placeholder="sk_..."
-              onChange={(e) => setForm({ ...form, elevenLabsApiKey: e.target.value })}
-              InputProps={{
-                endAdornment:
-                  form.elevenLabsApiKey !== "••••••••" ? (
-                    <InputAdornment position="end">
-                      <IconButton
-                        edge="end"
-                        onClick={() => setShowElevenLabsKey((v) => !v)}
-                        aria-label="Mostrar ou ocultar API Key"
-                      >
-                        {showElevenLabsKey ? <VisibilityOffIcon fontSize="small" /> : <VisibilityIcon fontSize="small" />}
-                      </IconButton>
-                    </InputAdornment>
-                  ) : undefined,
+            <ElevenLabsSection
+              form={{
+                brandName: form.brandName,
+                elevenLabsApiKey: form.elevenLabsApiKey,
+                elevenLabsAgentId: form.elevenLabsAgentId,
+                elevenLabsPhoneNumberId: form.elevenLabsPhoneNumberId,
+                elevenLabsWebhookId: form.elevenLabsWebhookId,
+                elevenLabsWebhookSecret: form.elevenLabsWebhookSecret,
+                elevenLabsResourcePrefix: form.elevenLabsResourcePrefix,
               }}
+              fieldErrors={fieldErrors}
+              onFieldChange={handleElevenLabsFieldChange}
+              onSettingsSynced={handleElevenLabsFieldChange}
+              onSaveManual={handleSaveElevenLabs}
+              onCopyUrl={handleCopyUrlVoid}
+              onNotify={handleNotify}
             />
-
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Agent ID (agent_id)"
-                  fullWidth
-                  value={form.elevenLabsAgentId}
-                  error={!!fieldErrors.elevenLabsAgentId}
-                  helperText={fieldErrors.elevenLabsAgentId ?? "ID do agente criado no ElevenLabs Agents."}
-                  placeholder="agent_..."
-                  onChange={(e) => setForm({ ...form, elevenLabsAgentId: e.target.value })}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Phone Number ID (SIP Trunk)"
-                  fullWidth
-                  value={form.elevenLabsPhoneNumberId}
-                  error={!!fieldErrors.elevenLabsPhoneNumberId}
-                  helperText={
-                    fieldErrors.elevenLabsPhoneNumberId ??
-                    "ID do número SIP importado em Phone Numbers na ElevenLabs."
-                  }
-                  placeholder="phnum_..."
-                  onChange={(e) => setForm({ ...form, elevenLabsPhoneNumberId: e.target.value })}
-                />
-              </Grid>
-            </Grid>
-
-            <TextField
-              label="Webhook Signing Secret (ElevenLabs)"
-              fullWidth
-              type={showElevenLabsSecret && form.elevenLabsWebhookSecret !== "••••••••" ? "text" : "password"}
-              value={form.elevenLabsWebhookSecret}
-              error={!!fieldErrors.elevenLabsWebhookSecret}
-              helperText={
-                fieldErrors.elevenLabsWebhookSecret ??
-                (form.elevenLabsWebhookSecret === "••••••••"
-                  ? "Secret salvo no banco. Digite um novo para substituir ou limpe o campo para remover."
-                  : "Usado para validar a assinatura HMAC-SHA256 (header ElevenLabs-Signature) nos eventos pós-chamada.")
-              }
-              placeholder="wsec_..."
-              onChange={(e) => setForm({ ...form, elevenLabsWebhookSecret: e.target.value })}
-              InputProps={{
-                endAdornment:
-                  form.elevenLabsWebhookSecret !== "••••••••" ? (
-                    <InputAdornment position="end">
-                      <IconButton
-                        edge="end"
-                        onClick={() => setShowElevenLabsSecret((v) => !v)}
-                        aria-label="Mostrar ou ocultar Secret"
-                      >
-                        {showElevenLabsSecret ? (
-                          <VisibilityOffIcon fontSize="small" />
-                        ) : (
-                          <VisibilityIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </InputAdornment>
-                  ) : undefined,
-              }}
-            />
-
-            <Box sx={{ p: 2, bgcolor: "grey.50", borderRadius: 2, border: 1, borderColor: "divider" }}>
-              <Typography variant="subtitle2" gutterBottom fontWeight={600}>
-                Post-Call Webhook da ElevenLabs
-              </Typography>
-              <Typography variant="body2" color="text.secondary" paragraph>
-                Cadastre esta URL nas configurações de Webhooks da ElevenLabs e habilite os eventos{" "}
-                <code>post_call_transcription</code> e <code>call_initiation_failure</code>:
-              </Typography>
-
-              <TextField
-                label="URL do Post-Call Webhook (fixa)"
-                fullWidth
-                size="small"
-                value={elevenLabsWebhookUrl}
-                disabled
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <Tooltip title="Copiar URL">
-                        <IconButton edge="end" onClick={() => void copyUrl(elevenLabsWebhookUrl)}>
-                          <ContentCopyIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Box>
-
-            <Stack direction="row" justifyContent="flex-end">
-              <Button variant="contained" onClick={() => void handleSaveElevenLabs()}>
-                Salvar integração ElevenLabs
-              </Button>
-            </Stack>
           </SectionCard>
 
           {/* FALLBACK DE TEXTO DA PROSPECÇÃO */}

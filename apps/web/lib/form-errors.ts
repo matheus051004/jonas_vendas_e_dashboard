@@ -24,7 +24,7 @@ export function parseApiFieldErrors(body: unknown): FieldErrors {
 }
 
 type SubmitResult =
-  | { ok: true }
+  | { ok: true; data?: unknown }
   | { ok: false; fieldErrors: FieldErrors; formError?: string };
 
 export function firstFieldError(errors: FieldErrors): string | undefined {
@@ -42,7 +42,10 @@ export async function submitJson(
   }
 
   const res = await fetch(url, init);
-  if (res.ok) return { ok: true };
+  if (res.ok) {
+    const data = await res.json().catch(() => undefined);
+    return { ok: true, data };
+  }
 
   const data = await res.json().catch(() => null);
   const fieldErrors = parseApiFieldErrors(data);
