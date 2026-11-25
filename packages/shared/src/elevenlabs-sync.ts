@@ -170,6 +170,18 @@ export function normalizeElevenLabsPrefix(raw?: string | null): string {
   return cleaned.length >= 2 ? cleaned : DEFAULT_RESOURCE_PREFIX;
 }
 
+/**
+ * Converte o slug de prefixo em rótulo legível para nomes de agente e webhook.
+ * Ex.: "painel_vendas" -> "Painel Vendas"
+ */
+export function formatElevenLabsPrefixLabel(prefix: string): string {
+  return normalizeElevenLabsPrefix(prefix)
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function isPrivateOrReservedIpv4(ip: string): boolean {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
   if (!match) return false;
@@ -902,7 +914,7 @@ export async function listElevenLabsAccountResources(
 
 /**
  * Provisiona ou sincroniza todos os recursos do painel na ElevenLabs em 1 clique, com isolamento por prefixo:
- * 1. Secret de autenticação (`<prefix>_agent_api_token`)
+ * 1. Secret de autenticação (`<prefix>_api_token`)
  * 2. 12 Webhook Tools prefixadas apontando para `/api/agent/*`
  * 3. Webhook pós-chamada HMAC (`/api/webhooks/elevenlabs`) — persistido imediatamente para nunca perder o secret
  * 4. Agente de voz prefixado com overrides + `workspace_overrides.webhooks` (sem sobrescrever o webhook global da conta)
@@ -932,7 +944,8 @@ export async function provisionElevenLabsResources(
   }
 
   // 1. Secret do workspace para o header x-webhook-token das tools
-  const secretName = `${prefix}_agent_api_token`;
+  const prefixLabel = formatElevenLabsPrefixLabel(prefix);
+  const secretName = `${prefix}_api_token`;
   const existingSecrets = await listAllSecrets(apiKey);
   const existingSecret = existingSecrets.find((s) => s.name === secretName);
   let secretId: string;
@@ -1014,7 +1027,7 @@ export async function provisionElevenLabsResources(
 
   // 3. Registro ou reutilização do Webhook Pós-Chamada HMAC (antes do agente para isolar via workspace_overrides)
   const webhookUrl = `${publicBaseUrl}/api/webhooks/elevenlabs`;
-  const webhookName = `[${prefix}] Webhook Pós-Chamada`;
+  const webhookName = `${prefixLabel} - Pós-Chamada`;
   const webhooksListRes = await elevenLabsRequest<{
     webhooks?: Array<{
       webhook_id: string;
@@ -1080,8 +1093,7 @@ export async function provisionElevenLabsResources(
   }
 
   // 4. Criação ou atualização do Agente de Voz prefixado (com webhook pós-chamada isolado no próprio agente)
-  const brandLabel = (settings.brandName || "Painel de Vendas").trim();
-  const agentName = `[${prefix}] ${brandLabel} — Prospecção de Voz`;
+  const agentName = `${prefixLabel} - Prospecção de Voz`;
   const savedVoicePrompt = settings.voiceAiPrompt.trim();
   const savedFirstMessage = settings.voiceFirstMessage.trim();
   const requestedVoiceId = input.voiceId?.trim() || "";

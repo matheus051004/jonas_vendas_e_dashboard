@@ -1026,7 +1026,6 @@ export default function ConfiguracoesPage() {
           >
             <ElevenLabsSection
               form={{
-                brandName: form.brandName,
                 elevenLabsApiKey: form.elevenLabsApiKey,
                 elevenLabsAgentId: form.elevenLabsAgentId,
                 elevenLabsPhoneNumberId: form.elevenLabsPhoneNumberId,

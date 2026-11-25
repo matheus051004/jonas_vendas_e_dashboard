@@ -33,7 +33,6 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import type { FieldErrors } from "@/lib/form-errors";
 
 export interface ElevenLabsFormFields {
-  brandName: string;
   elevenLabsApiKey: string;
   elevenLabsAgentId: string;
   elevenLabsPhoneNumberId: string;
@@ -124,6 +123,14 @@ function previewSlugPrefix(raw: string): string {
     .replace(/^_+|_+$/g, "")
     .slice(0, 24);
   return cleaned.length >= 2 ? cleaned : "painel_vendas";
+}
+
+function previewPrefixLabel(slug: string): string {
+  return slug
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function isLocalOrigin(urlStr: string): boolean {
@@ -378,6 +385,7 @@ export function ElevenLabsSection({
   }
 
   const normalizedPrefix = previewSlugPrefix(form.elevenLabsResourcePrefix || "painel_vendas");
+  const prefixLabel = previewPrefixLabel(normalizedPrefix);
   const cleanPublicUrl = publicBaseUrl.trim().replace(/\/+$/, "");
   const effectiveWebhookUrl = cleanPublicUrl
     ? `${cleanPublicUrl}/api/webhooks/elevenlabs`
@@ -535,20 +543,30 @@ export function ElevenLabsSection({
           <Box
             sx={{
               px: 1.5,
-              py: 1,
+              py: 1.25,
               borderRadius: 1.5,
               bgcolor: "background.paper",
               border: 1,
               borderColor: "divider",
             }}
           >
-            <Typography variant="caption" color="text.secondary" component="div" sx={{ lineHeight: 1.7 }}>
-              <strong>Nomes gerados na ElevenLabs:</strong> Agente{" "}
-              <code>[{normalizedPrefix}] {form.brandName || "Painel de Vendas"} — Prospecção de Voz</code> ·
-              Secret <code>{normalizedPrefix}_agent_api_token</code> · Tools{" "}
-              <code>{normalizedPrefix}_buscar_cliente</code>, <code>{normalizedPrefix}_listar_areas</code>, …
-              (12 no total) · Webhook <code>[{normalizedPrefix}] Webhook Pós-Chamada</code>
+            <Typography variant="caption" color="text.secondary" fontWeight={600} display="block" mb={0.5}>
+              Nomes que serão criados na ElevenLabs:
             </Typography>
+            <Grid container spacing={0.75} sx={{ fontSize: 12, color: "text.secondary" }}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <strong>Agente:</strong> <code>{prefixLabel} - Prospecção de Voz</code>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <strong>Webhook:</strong> <code>{prefixLabel} - Pós-Chamada</code>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <strong>Secret:</strong> <code>{normalizedPrefix}_api_token</code>
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <strong>Tools (12):</strong> <code>{normalizedPrefix}_*</code>
+              </Grid>
+            </Grid>
           </Box>
 
           <Grid container spacing={2}>
