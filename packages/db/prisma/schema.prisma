@@ -289,12 +289,20 @@ model Settings {
   // Intervalos de follow-up em minutos para cada tentativa nas vendas (ex.: [60, 120, 180])
   followUpIntervals          Int[]   @default([60, 120, 180])
   // Padrões de integração com Hubsoft
-  hubsoftBaseUrl             String  @default("https://api.ligtop.hubsoft.com.br")
-  hubsoftVendedorId          Int     @default(636)
-  hubsoftMotivoContratacaoId Int     @default(48)
-  hubsoftGruposClienteIds    Int[]   @default([4])
-  hubsoftGruposServicoIds    Int[]   @default([835])
-  hubsoftServicoStatusId     Int     @default(6)
+  hubsoftBaseUrl             String    @default("https://api.ligtop.hubsoft.com.br")
+  hubsoftClientId            String    @default("")
+  hubsoftClientSecret        String    @default("")
+  hubsoftUsername            String    @default("")
+  hubsoftPassword            String    @default("")
+  hubsoftAccessToken         String    @default("")
+  hubsoftRefreshToken        String    @default("")
+  hubsoftTokenUpdatedAt      DateTime?
+  hubsoftTokenExpiresAt      DateTime?
+  hubsoftVendedorId          Int       @default(636)
+  hubsoftMotivoContratacaoId Int       @default(48)
+  hubsoftGruposClienteIds    Int[]     @default([4])
+  hubsoftGruposServicoIds    Int[]     @default([835])
+  hubsoftServicoStatusId     Int       @default(6)
 
   // Prompts e Prospecção (ElevenLabs Agents + Fallback de Texto)
   voiceAiPrompt              String  @default("")

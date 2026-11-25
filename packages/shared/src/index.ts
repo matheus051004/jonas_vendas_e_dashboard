@@ -11,3 +11,4 @@ export * from "./logger";
 export * from "./prospect-services";
 export * from "./elevenlabs";
 export * from "./elevenlabs-sync";
+export * from "./hubsoft-auth";

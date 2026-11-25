@@ -170,7 +170,7 @@ export const SetStageBodySchema = z.object({
 });
 
 export const RegisterContractBodySchema = z.object({
-  hubsoftToken: z.string().min(1, "hubsoftToken é obrigatório"),
+  hubsoftToken: z.string().nullish(),
   planId: z.unknown().optional(),
   fullName: z.string().min(1, "Nome completo é obrigatório"),
   cpf: z.string().min(1, "CPF é obrigatório"),
@@ -203,7 +203,7 @@ export const RegisterContractBodySchema = z.object({
 export type RegisterContractInput = z.infer<typeof RegisterContractBodySchema>;
 
 export const RegisterContractPJBodySchema = z.object({
-  hubsoftToken: z.string().min(1, "hubsoftToken é obrigatório"),
+  hubsoftToken: z.string().nullish(),
   planId: z.unknown().optional(),
   dueDateId: z.string().min(1, "dueDateId (ID da data de vencimento) é obrigatório"),
   companyName: z.string().min(1, "Razão social é obrigatória"),

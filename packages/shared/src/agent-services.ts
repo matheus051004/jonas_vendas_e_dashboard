@@ -6,6 +6,11 @@ import { scheduleFollowUp, cancelFollowUp, DEFAULT_FOLLOW_UP_INTERVALS } from ".
 import { getSettings } from "./settings";
 import { addSystemLog } from "./logger";
 import { findClientByPhone } from "./clients";
+import {
+  DEFAULT_HUBSOFT_BASE_URL,
+  getValidHubsoftAccessToken,
+  refreshHubsoftTokenAfterUnauthorized,
+} from "./hubsoft-auth";
 
 export class HubsoftApiError extends Error {
   constructor(
@@ -74,6 +79,43 @@ export function parseHubsoftResponse(rawJson: unknown, httpStatus: number) {
     hubsoftClientId,
     hubsoftProtocol,
   };
+}
+
+/**
+ * Envia o cadastro de cliente/contrato ao Hubsoft usando o token informado explicitamente
+ * ou o token OAuth gerenciado automaticamente pelo painel, com retry único em HTTP 401.
+ */
+async function submitClientToHubsoft(
+  hubsoftBaseUrl: string | null | undefined,
+  hubsoftPayload: Record<string, unknown>,
+  overrideToken?: unknown
+) {
+  const hubsoftBase = hubsoftBaseUrl?.trim() || DEFAULT_HUBSOFT_BASE_URL;
+  const hubsoftUrl = `${hubsoftBase.replace(/\/+$/, "")}/api/v1/integracao/cliente`;
+  const explicitToken = cleanString(overrideToken);
+
+  const postWithToken = (token: string) =>
+    fetch(hubsoftUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(hubsoftPayload),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+  const initialToken = explicitToken ?? (await getValidHubsoftAccessToken());
+  let res = await postWithToken(initialToken);
+
+  if (res.status === 401 && !explicitToken) {
+    const refreshedToken = await refreshHubsoftTokenAfterUnauthorized(initialToken);
+    res = await postWithToken(refreshedToken);
+  }
+
+  const rawJson = await res.json().catch(() => null);
+  const { hubsoftClientId, hubsoftProtocol } = parseHubsoftResponse(rawJson, res.status);
+  return { rawJson, hubsoftClientId, hubsoftProtocol };
 }
 
 export async function getAiPrompt(): Promise<string> {
@@ -633,20 +675,11 @@ export async function registerClientContract(clientId: string, input: RegisterCo
     ids_promocoes: promotionIds,
   };
 
-  const hubsoftBase = settings.hubsoftBaseUrl?.trim() || "https://api.ligtop.hubsoft.com.br";
-  const hubsoftUrl = `${hubsoftBase.replace(/\/+$/, "")}/api/v1/integracao/cliente`;
-
-  const res = await fetch(hubsoftUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.hubsoftToken.trim()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(hubsoftPayload),
-  });
-
-  const rawJson = await res.json().catch(() => null);
-  const { hubsoftClientId, hubsoftProtocol } = parseHubsoftResponse(rawJson, res.status);
+  const { rawJson, hubsoftClientId, hubsoftProtocol } = await submitClientToHubsoft(
+    settings.hubsoftBaseUrl,
+    hubsoftPayload,
+    input.hubsoftToken
+  );
 
   const data = {
     planId: plan ? plan.id : null,
@@ -852,21 +885,11 @@ export async function registerClientContractPJ(
     ids_promocoes: promotionIds,
   };
 
-  const hubsoftBase = settings.hubsoftBaseUrl?.trim() || "https://api.ligtop.hubsoft.com.br";
-  const hubsoftUrl = `${hubsoftBase.replace(/\/+$/, "")}/api/v1/integracao/cliente`;
-
-  let hubsoftResponse: Record<string, unknown> | null = null;
-  const res = await fetch(hubsoftUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${input.hubsoftToken.trim()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(hubsoftPayload),
-  });
-
-  const rawJson = await res.json().catch(() => null);
-  const { hubsoftClientId, hubsoftProtocol } = parseHubsoftResponse(rawJson, res.status);
+  const { rawJson, hubsoftClientId, hubsoftProtocol } = await submitClientToHubsoft(
+    settings.hubsoftBaseUrl,
+    hubsoftPayload,
+    input.hubsoftToken
+  );
 
   const data = {
     planId: plan ? plan.id : null,

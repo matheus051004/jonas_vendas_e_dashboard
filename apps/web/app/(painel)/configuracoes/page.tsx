@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -29,6 +30,9 @@ import WebhookIcon from "@mui/icons-material/Webhook";
 import TuneIcon from "@mui/icons-material/Tune";
 import PhoneInTalkIcon from "@mui/icons-material/PhoneInTalk";
 import AddIcon from "@mui/icons-material/Add";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 import { ElevenLabsSection } from "./elevenlabs-section";
 import {
   SettingsBrandingSchema,
@@ -74,6 +78,14 @@ interface Settings {
   followUpEndTime: string | null;
   followUpIntervals: number[];
   hubsoftBaseUrl: string;
+  hubsoftClientId: string;
+  hubsoftClientSecret: string;
+  hubsoftUsername: string;
+  hubsoftPassword: string;
+  hasHubsoftAccessToken: boolean;
+  hasHubsoftRefreshToken: boolean;
+  hubsoftTokenUpdatedAt: string | null;
+  hubsoftTokenExpiresAt: string | null;
   hubsoftVendedorId: number;
   hubsoftMotivoContratacaoId: number;
   hubsoftGruposClienteIds: number[];
@@ -158,12 +170,18 @@ const SettingsProspectingTextSchema = SettingsWebhooksSchema.pick({
 
 const HUBSOFT_FIELDS: (keyof Settings)[] = [
   "hubsoftBaseUrl",
+  "hubsoftClientId",
+  "hubsoftClientSecret",
+  "hubsoftUsername",
+  "hubsoftPassword",
   "hubsoftVendedorId",
   "hubsoftMotivoContratacaoId",
   "hubsoftGruposClienteIds",
   "hubsoftGruposServicoIds",
   "hubsoftServicoStatusId",
 ];
+
+const MASKED_SECRET_SENTINEL = "••••••••";
 
 const MAX_LOGO_BYTES = 500_000;
 
@@ -400,6 +418,13 @@ export default function ConfiguracoesPage() {
     message: "",
   });
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
+  const [renewingHubsoftToken, setRenewingHubsoftToken] = React.useState(false);
+  const [hubsoftTokenFeedback, setHubsoftTokenFeedback] = React.useState<{
+    severity: "success" | "error";
+    message: string;
+  } | null>(null);
+  const [showHubsoftClientSecret, setShowHubsoftClientSecret] = React.useState(false);
+  const [showHubsoftPassword, setShowHubsoftPassword] = React.useState(false);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -437,6 +462,14 @@ export default function ConfiguracoesPage() {
               ? data.followUpIntervals
               : [...DEFAULT_FOLLOW_UP_INTERVALS],
           hubsoftBaseUrl: data.hubsoftBaseUrl || "https://api.ligtop.hubsoft.com.br",
+          hubsoftClientId: data.hubsoftClientId ?? "",
+          hubsoftClientSecret: data.hubsoftClientSecret ?? "",
+          hubsoftUsername: data.hubsoftUsername ?? "",
+          hubsoftPassword: data.hubsoftPassword ?? "",
+          hasHubsoftAccessToken: Boolean(data.hasHubsoftAccessToken),
+          hasHubsoftRefreshToken: Boolean(data.hasHubsoftRefreshToken),
+          hubsoftTokenUpdatedAt: data.hubsoftTokenUpdatedAt ?? null,
+          hubsoftTokenExpiresAt: data.hubsoftTokenExpiresAt ?? null,
           hubsoftVendedorId: data.hubsoftVendedorId ?? 636,
           hubsoftMotivoContratacaoId: data.hubsoftMotivoContratacaoId ?? 48,
           hubsoftGruposClienteIds: data.hubsoftGruposClienteIds?.length ? data.hubsoftGruposClienteIds : [4],
@@ -626,10 +659,68 @@ export default function ConfiguracoesPage() {
     }
 
     const result = await patch(parsed.data);
+    if (result.ok && result.data && typeof result.data === "object") {
+      const saved = result.data as Partial<Settings>;
+      setForm((prev) => (prev ? { ...prev, ...saved } : prev));
+    }
     setSnackbar({
       open: true,
       message: result.ok ? "Padrões Hubsoft salvos com sucesso" : `Erro ao salvar Hubsoft — ${result.message}`,
     });
+  }
+
+  async function handleRenewHubsoftToken() {
+    if (!form) return;
+    setFieldErrors({});
+    setHubsoftTokenFeedback(null);
+
+    const parsed = SettingsHubsoftSchema.safeParse(sliceFields(HUBSOFT_FIELDS));
+    if (!parsed.success) {
+      const errors = zodFieldErrors(parsed.error);
+      setFieldErrors(errors);
+      setSnackbar({ open: true, message: firstFieldError(errors) ?? "Verifique os dados do Hubsoft." });
+      return;
+    }
+
+    setRenewingHubsoftToken(true);
+    try {
+      const res = await fetch("/api/hubsoft/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          hubsoftBaseUrl: parsed.data.hubsoftBaseUrl,
+          hubsoftClientId: parsed.data.hubsoftClientId,
+          hubsoftClientSecret: parsed.data.hubsoftClientSecret,
+          hubsoftUsername: parsed.data.hubsoftUsername,
+          hubsoftPassword: parsed.data.hubsoftPassword,
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        settings?: Partial<Settings>;
+      } | null;
+
+      if (!res.ok || !data?.ok) {
+        const msg = data?.error || `Falha ao gerar token Hubsoft (HTTP ${res.status}).`;
+        setHubsoftTokenFeedback({ severity: "error", message: msg });
+        setSnackbar({ open: true, message: msg });
+        return;
+      }
+
+      if (data.settings) {
+        setForm((prev) => (prev ? { ...prev, ...data.settings } : prev));
+      }
+      const okMsg = "Token OAuth do Hubsoft gerado e salvo com sucesso.";
+      setHubsoftTokenFeedback({ severity: "success", message: okMsg });
+      setSnackbar({ open: true, message: okMsg });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao conectar ao servidor.";
+      setHubsoftTokenFeedback({ severity: "error", message: msg });
+      setSnackbar({ open: true, message: msg });
+    } finally {
+      setRenewingHubsoftToken(false);
+    }
   }
 
   const copyToClipboard = React.useCallback(
@@ -1407,7 +1498,15 @@ export default function ConfiguracoesPage() {
 
           <SectionCard
             title="Padrões de Integração Hubsoft"
-            description="Parâmetros padrão da empresa (vendedor, vencimento, grupos, cobrança) enviados diretamente à API do Hubsoft no fechamento de vendas."
+            description="Credenciais OAuth (com renovação automática a cada 29 dias) e parâmetros padrão da empresa enviados à API do Hubsoft no fechamento de vendas."
+            badge={
+              <Chip
+                label={form.hasHubsoftAccessToken ? "Token OAuth ativo" : "Token não gerado"}
+                color={form.hasHubsoftAccessToken ? "success" : "warning"}
+                variant="outlined"
+                size="small"
+              />
+            }
           >
             <TextField
               label="URL Base da API do Hubsoft"
@@ -1417,6 +1516,139 @@ export default function ConfiguracoesPage() {
               helperText={fieldErrors.hubsoftBaseUrl ?? "Endpoint base (padrão: https://api.ligtop.hubsoft.com.br)"}
               onChange={(e) => setForm({ ...form, hubsoftBaseUrl: e.target.value })}
             />
+
+            <Divider />
+
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              Credenciais OAuth (/oauth/token — grant_type: password)
+            </Typography>
+
+            <Grid container spacing={2}>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Client ID (client_id)"
+                  fullWidth
+                  value={form.hubsoftClientId}
+                  error={!!fieldErrors.hubsoftClientId}
+                  helperText={fieldErrors.hubsoftClientId ?? "ID da aplicação OAuth no Hubsoft (ex.: 90)"}
+                  onChange={(e) => setForm({ ...form, hubsoftClientId: e.target.value })}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Client Secret (client_secret)"
+                  type={
+                    showHubsoftClientSecret && form.hubsoftClientSecret !== MASKED_SECRET_SENTINEL
+                      ? "text"
+                      : "password"
+                  }
+                  fullWidth
+                  value={form.hubsoftClientSecret}
+                  error={!!fieldErrors.hubsoftClientSecret}
+                  helperText={
+                    fieldErrors.hubsoftClientSecret ??
+                    (form.hubsoftClientSecret === MASKED_SECRET_SENTINEL
+                      ? "Client Secret salvo no servidor. Só substitua se desejar alterar."
+                      : "Segredo da aplicação OAuth no Hubsoft")
+                  }
+                  onChange={(e) => setForm({ ...form, hubsoftClientSecret: e.target.value })}
+                  InputProps={
+                    form.hubsoftClientSecret === MASKED_SECRET_SENTINEL
+                      ? undefined
+                      : {
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                onClick={() => setShowHubsoftClientSecret((prev) => !prev)}
+                                edge="end"
+                                aria-label="Alternar visibilidade do Client Secret"
+                              >
+                                {showHubsoftClientSecret ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }
+                  }
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Usuário (username)"
+                  fullWidth
+                  value={form.hubsoftUsername}
+                  error={!!fieldErrors.hubsoftUsername}
+                  helperText={fieldErrors.hubsoftUsername ?? "E-mail/usuário de integração no Hubsoft"}
+                  onChange={(e) => setForm({ ...form, hubsoftUsername: e.target.value })}
+                />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Senha (password)"
+                  type={
+                    showHubsoftPassword && form.hubsoftPassword !== MASKED_SECRET_SENTINEL
+                      ? "text"
+                      : "password"
+                  }
+                  fullWidth
+                  value={form.hubsoftPassword}
+                  error={!!fieldErrors.hubsoftPassword}
+                  helperText={
+                    fieldErrors.hubsoftPassword ??
+                    (form.hubsoftPassword === MASKED_SECRET_SENTINEL
+                      ? "Senha salva no servidor. Só substitua se desejar alterar."
+                      : "Senha do usuário de integração no Hubsoft")
+                  }
+                  onChange={(e) => setForm({ ...form, hubsoftPassword: e.target.value })}
+                  InputProps={
+                    form.hubsoftPassword === MASKED_SECRET_SENTINEL
+                      ? undefined
+                      : {
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                onClick={() => setShowHubsoftPassword((prev) => !prev)}
+                                edge="end"
+                                aria-label="Alternar visibilidade da senha"
+                              >
+                                {showHubsoftPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }
+                  }
+                />
+              </Grid>
+            </Grid>
+
+            <Alert severity={form.hasHubsoftAccessToken ? "info" : "warning"} variant="outlined">
+              {form.hasHubsoftAccessToken ? (
+                <>
+                  <strong>Access Token</strong>
+                  {form.hasHubsoftRefreshToken ? " + Refresh Token" : ""} armazenado com segurança no servidor.
+                  {form.hubsoftTokenUpdatedAt
+                    ? ` Última geração: ${new Date(form.hubsoftTokenUpdatedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}.`
+                    : ""}
+                  {form.hubsoftTokenExpiresAt
+                    ? ` Expira em: ${new Date(form.hubsoftTokenExpiresAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}.`
+                    : ""}
+                  {" O worker renova automaticamente a cada 29 dias (e refaz em caso de HTTP 401)."}
+                </>
+              ) : (
+                'Nenhum token OAuth do Hubsoft gerado ainda. Preencha os dados acima e clique em "Salvar & Gerar/Renovar Token Agora" (ou o painel tentará gerar automaticamente no primeiro contrato).'
+              )}
+            </Alert>
+
+            {hubsoftTokenFeedback && (
+              <Alert severity={hubsoftTokenFeedback.severity} onClose={() => setHubsoftTokenFeedback(null)}>
+                {hubsoftTokenFeedback.message}
+              </Alert>
+            )}
+
+            <Divider />
+
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              Parâmetros Padrão de Contrato
+            </Typography>
 
             <Grid container spacing={2}>
               <Grid size={{ xs: 12, sm: 6, md: 4 }}>
@@ -1480,7 +1712,15 @@ export default function ConfiguracoesPage() {
               </Grid>
             </Grid>
 
-            <Stack direction="row" justifyContent="flex-end">
+            <Stack direction="row" justifyContent="flex-end" spacing={1.5} flexWrap="wrap" useFlexGap>
+              <Button
+                variant="outlined"
+                startIcon={renewingHubsoftToken ? <CircularProgress size={16} /> : <RefreshIcon />}
+                disabled={renewingHubsoftToken}
+                onClick={() => void handleRenewHubsoftToken()}
+              >
+                {renewingHubsoftToken ? "Gerando token..." : "Salvar & Gerar/Renovar Token Agora"}
+              </Button>
               <Button variant="contained" onClick={() => void handleSaveHubsoft()}>
                 Salvar padrões Hubsoft
               </Button>

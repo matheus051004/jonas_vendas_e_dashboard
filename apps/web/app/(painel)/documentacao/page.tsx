@@ -783,8 +783,8 @@ function verifySignature(rawBody, secret, signatureHeader) {
             title="8. Registrar Contrato Hubsoft PF (registerContract)"
             method="POST"
             path="/api/agent/clients/:phone/contract"
-            description="Cadastra o cliente e gera a proposta/contrato diretamente no Hubsoft. Não marca FECHOU_VENDA até que a assinatura seja confirmada."
-            curlCode={`curl -X POST ${origin}/api/agent/clients/5561991640073/contract \\\n  -H "Content-Type: application/json" \\\n  -H "x-webhook-token: SEU_AGENT_API_TOKEN" \\\n  -d '{\n    "hubsoftToken": "TOKEN_HUBSOFT",\n    "planId": "plan1",\n    "fullName": "Carlos Roberto Lopes",\n    "cpf": "12345678900",\n    "phonePrimary": "61991640073",\n    "email": "carlos@gmail.com",\n    "gender": "M",\n    "cep": "72215192",\n    "street": "QNM 19 Conjunto B",\n    "number": "3",\n    "neighborhood": "Ceilândia",\n    "dueDateId": "venc1"\n  }'`}
+            description="Cadastra o cliente e gera a proposta/contrato diretamente no Hubsoft usando o token OAuth gerenciado pelo painel (hubsoftToken é opcional, apenas para override). Não marca FECHOU_VENDA até que a assinatura seja confirmada."
+            curlCode={`curl -X POST ${origin}/api/agent/clients/5561991640073/contract \\\n  -H "Content-Type: application/json" \\\n  -H "x-webhook-token: SEU_AGENT_API_TOKEN" \\\n  -d '{\n    "planId": "plan1",\n    "fullName": "Carlos Roberto Lopes",\n    "cpf": "12345678900",\n    "phonePrimary": "61991640073",\n    "email": "carlos@gmail.com",\n    "gender": "M",\n    "cep": "72215192",\n    "street": "QNM 19 Conjunto B",\n    "number": "3",\n    "neighborhood": "Ceilândia",\n    "dueDateId": "venc1"\n  }'`}
             responseCode={`{\n  "ok": true,\n  "message": "Contrato registrado no Hubsoft com sucesso",\n  "contractId": "contract123",\n  "hubsoftProtocol": "20261015-001"\n}`}
           />
         </Stack>

@@ -6,6 +6,7 @@ import {
   normalizeElevenLabsPrefix,
   updateSettings,
 } from "@jonas/shared";
+import { sanitizeSettingsForResponse } from "@/lib/settings-sanitizer";
 
 const emptyOrUrl = z.union([z.string().url(), z.literal("")]);
 
@@ -49,22 +50,16 @@ const SettingsUpdateSchema = z.object({
   followUpEndTime: timeFormat,
   followUpIntervals: z.array(z.number().int().min(1).max(43200)).min(1).max(10).optional(),
   hubsoftBaseUrl: z.string().url().optional(),
+  hubsoftClientId: z.string().max(120).optional(),
+  hubsoftClientSecret: z.string().max(255).optional(),
+  hubsoftUsername: z.string().max(255).optional(),
+  hubsoftPassword: z.string().max(255).optional(),
   hubsoftVendedorId: z.number().int().positive().optional(),
   hubsoftMotivoContratacaoId: z.number().int().positive().optional(),
   hubsoftGruposClienteIds: z.array(z.number().int()).optional(),
   hubsoftGruposServicoIds: z.array(z.number().int()).optional(),
   hubsoftServicoStatusId: z.number().int().positive().optional(),
 });
-
-function sanitizeSettingsForResponse<
-  T extends { elevenLabsApiKey?: string; elevenLabsWebhookSecret?: string }
->(settings: T): T {
-  return {
-    ...settings,
-    elevenLabsApiKey: settings.elevenLabsApiKey ? MASKED_SECRET_SENTINEL : "",
-    elevenLabsWebhookSecret: settings.elevenLabsWebhookSecret ? MASKED_SECRET_SENTINEL : "",
-  };
-}
 
 export async function GET() {
   const settings = await getSettings();
@@ -82,6 +77,18 @@ export async function PATCH(req: NextRequest) {
   }
   if (updateData.elevenLabsWebhookSecret === MASKED_SECRET_SENTINEL) {
     delete updateData.elevenLabsWebhookSecret;
+  }
+  if (updateData.hubsoftClientSecret === MASKED_SECRET_SENTINEL) {
+    delete updateData.hubsoftClientSecret;
+  }
+  if (updateData.hubsoftPassword === MASKED_SECRET_SENTINEL) {
+    delete updateData.hubsoftPassword;
+  }
+  if (typeof updateData.hubsoftClientId === "string") {
+    updateData.hubsoftClientId = updateData.hubsoftClientId.trim();
+  }
+  if (typeof updateData.hubsoftUsername === "string") {
+    updateData.hubsoftUsername = updateData.hubsoftUsername.trim();
   }
   if (typeof updateData.elevenLabsResourcePrefix === "string") {
     updateData.elevenLabsResourcePrefix = normalizeElevenLabsPrefix(

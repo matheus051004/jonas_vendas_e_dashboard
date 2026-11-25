@@ -18,6 +18,7 @@ export const QUEUE_NAMES = {
   messages: "messages",
   followups: "followups",
   prospecting: "prospecting",
+  hubsoftAuth: "hubsoft-auth",
 } as const;
 
 export const messagesQueue = new Queue<IncomingMessageJob>(QUEUE_NAMES.messages, {
@@ -31,6 +32,31 @@ export const followUpsQueue = new Queue<FollowUpJob>(QUEUE_NAMES.followups, {
 export const prospectingQueue = new Queue<ProspectingCallJob>(QUEUE_NAMES.prospecting, {
   connection: redisConnection,
 });
+
+export const hubsoftAuthQueue = new Queue<Record<string, never>>(QUEUE_NAMES.hubsoftAuth, {
+  connection: redisConnection,
+});
+
+const HUBSOFT_TOKEN_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Garante o agendamento recorrente diário no BullMQ que verifica se o token OAuth
+ * do Hubsoft atingiu 29 dias (ou expiração próxima) e o renova automaticamente.
+ */
+export async function ensureHubsoftTokenScheduler() {
+  await hubsoftAuthQueue.upsertJobScheduler(
+    "hubsoft-token-renew-check",
+    { every: HUBSOFT_TOKEN_CHECK_INTERVAL_MS },
+    {
+      name: "renew-hubsoft-token-if-due",
+      data: {},
+      opts: {
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    }
+  );
+}
 
 // Intervalos padrão em minutos caso não configurado no painel.
 export const DEFAULT_FOLLOW_UP_INTERVALS = [60, 120, 180];

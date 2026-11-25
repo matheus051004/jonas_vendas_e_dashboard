@@ -20,6 +20,8 @@ import {
   prepareCallResultWaiter,
   pauseProspecting,
   deactivateProspectingIfIdle,
+  ensureHubsoftTokenScheduler,
+  renewHubsoftTokenIfDue,
   DEFAULT_FOLLOW_UP_INTERVALS,
   type IncomingMessageJob,
   type FollowUpJob,
@@ -380,7 +382,29 @@ const prospectingWorker = new Worker<ProspectingCallJob>(
   }
 );
 
-for (const worker of [messagesWorker, followUpsWorker, prospectingWorker]) {
+const hubsoftAuthWorker = new Worker<Record<string, never>>(
+  QUEUE_NAMES.hubsoftAuth,
+  async () => {
+    const result = await renewHubsoftTokenIfDue();
+    if (result.renewed) {
+      console.log("[hubsoft-auth] Token OAuth do Hubsoft renovado automaticamente.");
+    }
+  },
+  { connection: redisConnection }
+);
+
+void ensureHubsoftTokenScheduler()
+  .then(() => renewHubsoftTokenIfDue())
+  .then((result) => {
+    if (result.renewed) {
+      console.log("[hubsoft-auth] Token OAuth do Hubsoft inicializado/renovado na inicialização.");
+    }
+  })
+  .catch((err) => {
+    console.error("[hubsoft-auth] Falha ao configurar/executar renovação OAuth:", err);
+  });
+
+for (const worker of [messagesWorker, followUpsWorker, prospectingWorker, hubsoftAuthWorker]) {
   worker.on("failed", (job, err) => {
     console.error(`[${worker.name}] job ${job?.id} falhou:`, err);
   });
@@ -390,5 +414,6 @@ console.log(
   "Worker rodando. Filas:",
   QUEUE_NAMES.messages,
   QUEUE_NAMES.followups,
-  QUEUE_NAMES.prospecting
+  QUEUE_NAMES.prospecting,
+  QUEUE_NAMES.hubsoftAuth
 );

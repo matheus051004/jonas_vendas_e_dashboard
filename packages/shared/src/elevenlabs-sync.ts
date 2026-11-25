@@ -575,7 +575,6 @@ export function buildPanelElevenLabsTools(
           type: "object",
           description: "Dados completos do contrato Pessoa Física.",
           properties: {
-            hubsoftToken: { type: "string", description: "Token de autenticação Hubsoft para emissão do contrato." },
             planId: { type: "string", description: "ID ou nome do plano escolhido." },
             dueDateId: { type: "string", description: "ID ou dia de vencimento escolhido em listar_vencimentos." },
             fullName: { type: "string", description: "Nome completo do titular." },
@@ -606,7 +605,6 @@ export function buildPanelElevenLabsTools(
             },
           },
           required: [
-            "hubsoftToken",
             "dueDateId",
             "fullName",
             "cpf",
@@ -642,7 +640,6 @@ export function buildPanelElevenLabsTools(
           type: "object",
           description: "Dados completos do contrato Pessoa Jurídica.",
           properties: {
-            hubsoftToken: { type: "string", description: "Token de autenticação Hubsoft para emissão do contrato." },
             planId: { type: "string", description: "ID ou nome do plano escolhido." },
             dueDateId: { type: "string", description: "ID ou dia de vencimento escolhido em listar_vencimentos." },
             companyName: { type: "string", description: "Razão social da empresa." },
@@ -667,7 +664,6 @@ export function buildPanelElevenLabsTools(
             },
           },
           required: [
-            "hubsoftToken",
             "dueDateId",
             "companyName",
             "cnpj",

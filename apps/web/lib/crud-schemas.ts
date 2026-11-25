@@ -125,6 +125,10 @@ export const SettingsPromptSchema = z.object({
 
 export const SettingsHubsoftSchema = z.object({
   hubsoftBaseUrl: z.string().url("Informe uma URL válida"),
+  hubsoftClientId: z.string().max(120, "Client ID muito longo").default(""),
+  hubsoftClientSecret: z.string().max(255, "Client Secret muito longo").default(""),
+  hubsoftUsername: z.string().max(255, "Usuário muito longo").default(""),
+  hubsoftPassword: z.string().max(255, "Senha muito longa").default(""),
   hubsoftVendedorId: z.coerce.number().int().positive("Informe um ID válido"),
   hubsoftMotivoContratacaoId: z.coerce.number().int().positive("Informe um ID válido"),
   hubsoftGruposClienteIds: z.array(z.coerce.number().int()).default([4]),
