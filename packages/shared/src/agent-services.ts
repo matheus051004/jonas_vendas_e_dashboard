@@ -45,13 +45,6 @@ export function parseHubsoftResponse(rawJson: unknown, httpStatus: number) {
       (dataItem && typeof dataItem === "object" ? JSON.stringify(dataItem) : null) ||
       `Hubsoft respondeu com status ${httpStatus}`;
 
-    void addSystemLog({
-      level: "error",
-      source: "hubsoft",
-      message: errorDetail,
-      details: rawJson,
-    });
-
     throw new HubsoftApiError(errorDetail, httpStatus, rawJson);
   }
 
@@ -88,7 +81,8 @@ export function parseHubsoftResponse(rawJson: unknown, httpStatus: number) {
 async function submitClientToHubsoft(
   hubsoftBaseUrl: string | null | undefined,
   hubsoftPayload: Record<string, unknown>,
-  overrideToken?: unknown
+  overrideToken?: unknown,
+  clientPhone?: string
 ) {
   const hubsoftBase = hubsoftBaseUrl?.trim() || DEFAULT_HUBSOFT_BASE_URL;
   const hubsoftUrl = `${hubsoftBase.replace(/\/+$/, "")}/api/v1/integracao/cliente`;
@@ -106,16 +100,55 @@ async function submitClientToHubsoft(
     });
 
   const initialToken = explicitToken ?? (await getValidHubsoftAccessToken());
-  let res = await postWithToken(initialToken);
+
+  const sendFetch = async (token: string) => {
+    try {
+      return await postWithToken(token);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Falha na requisição ao Hubsoft";
+      await addSystemLog({
+        level: "error",
+        source: "hubsoft",
+        message,
+        phone: clientPhone,
+        payload: hubsoftPayload,
+      });
+      throw err;
+    }
+  };
+
+  let res = await sendFetch(initialToken);
 
   if (res.status === 401 && !explicitToken) {
     const refreshedToken = await refreshHubsoftTokenAfterUnauthorized(initialToken);
-    res = await postWithToken(refreshedToken);
+    res = await sendFetch(refreshedToken);
   }
 
   const rawJson = await res.json().catch(() => null);
-  const { hubsoftClientId, hubsoftProtocol } = parseHubsoftResponse(rawJson, res.status);
-  return { rawJson, hubsoftClientId, hubsoftProtocol };
+  try {
+    const { hubsoftClientId, hubsoftProtocol } = parseHubsoftResponse(rawJson, res.status);
+
+    await addSystemLog({
+      level: "info",
+      source: "hubsoft",
+      message: `Contrato enviado ao Hubsoft (cliente #${hubsoftClientId ?? "?"}, protocolo ${hubsoftProtocol ?? "-"})`,
+      phone: clientPhone,
+      payload: hubsoftPayload,
+      details: rawJson,
+    });
+
+    return { rawJson, hubsoftClientId, hubsoftProtocol };
+  } catch (err) {
+    await addSystemLog({
+      level: "error",
+      source: "hubsoft",
+      message: err instanceof Error ? err.message : `Hubsoft respondeu com status ${res.status}`,
+      phone: clientPhone,
+      payload: hubsoftPayload,
+      details: rawJson,
+    });
+    throw err;
+  }
 }
 
 export async function getAiPrompt(): Promise<string> {
@@ -707,7 +740,8 @@ export async function registerClientContract(clientId: string, input: RegisterCo
   const { rawJson, hubsoftClientId, hubsoftProtocol } = await submitClientToHubsoft(
     settings.hubsoftBaseUrl,
     hubsoftPayload,
-    input.hubsoftToken
+    input.hubsoftToken,
+    client.phone
   );
 
   const data = {
@@ -912,7 +946,8 @@ export async function registerClientContractPJ(
   const { rawJson, hubsoftClientId, hubsoftProtocol } = await submitClientToHubsoft(
     settings.hubsoftBaseUrl,
     hubsoftPayload,
-    input.hubsoftToken
+    input.hubsoftToken,
+    client.phone
   );
 
   const data = {

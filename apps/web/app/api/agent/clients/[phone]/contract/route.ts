@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import {
   RegisterContractBodySchema,
+  HubsoftApiError,
   findClientByPhone,
   registerClientContract,
   addSystemLog,
@@ -47,14 +48,20 @@ export async function POST(
     const message = err instanceof Error ? err.message : "Erro ao registrar contrato no Hubsoft";
     const details = (err as { details?: unknown })?.details;
 
-    await addSystemLog({
-      level: "error",
-      source: "contract-pf",
-      message: `Falha ao gerar contrato PF: ${message}`,
-      phone,
-      payload: body,
-      details,
-    });
+    if (!(err instanceof HubsoftApiError)) {
+      const safePayload =
+        body && typeof body === "object" && "hubsoftToken" in body
+          ? { ...(body as Record<string, unknown>), hubsoftToken: "[REDACTED]" }
+          : body;
+      await addSystemLog({
+        level: "error",
+        source: "contract-pf",
+        message: `Falha ao gerar contrato PF: ${message}`,
+        phone,
+        payload: safePayload,
+        details,
+      });
+    }
 
     return NextResponse.json(
       {

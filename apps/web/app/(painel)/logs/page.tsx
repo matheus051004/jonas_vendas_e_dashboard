@@ -537,7 +537,9 @@ export default function LogsPage() {
                 <Box>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" mb={0.5}>
                     <Typography variant="subtitle2" fontWeight="bold">
-                      Dados enviados na Requisição (Payload da IA)
+                      {selectedLog.source === "hubsoft"
+                        ? "Payload enviado à API do Hubsoft"
+                        : "Dados enviados na Requisição (Payload da IA)"}
                     </Typography>
                     <Button
                       size="small"
