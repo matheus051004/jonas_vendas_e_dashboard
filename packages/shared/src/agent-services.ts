@@ -565,6 +565,39 @@ export async function setClientStage(clientId: string, stage: SaleStage) {
   return prisma.client.update({ where: { id: clientId }, data: { stage } });
 }
 
+const FAKE_HUBSOFT_SECONDARY_PHONE = "62992923492";
+const FALLBACK_FAKE_HUBSOFT_SECONDARY_PHONE = "62992923493";
+
+function normalizePhoneCompareDigits(digits: string): string {
+  let norm = digits.replace(/^0+/, "");
+  if (norm.length > 11 && norm.startsWith("55")) {
+    norm = norm.slice(2).replace(/^0+/, "");
+  }
+  return norm;
+}
+
+function isSamePhoneDigits(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return a === b || normalizePhoneCompareDigits(a) === normalizePhoneCompareDigits(b);
+}
+
+/**
+ * Normaliza o telefone primário e define sempre o número fake padrão (62992923492)
+ * para telefone_secundario no Hubsoft (exigido pelo Hubsoft e sem coleta com o lead).
+ */
+function resolveHubsoftPhones(phonePrimaryRaw: string) {
+  const cleanPhonePrimary = phonePrimaryRaw.replace(/\D/g, "");
+  const cleanPhoneSecondary = !isSamePhoneDigits(FAKE_HUBSOFT_SECONDARY_PHONE, cleanPhonePrimary)
+    ? FAKE_HUBSOFT_SECONDARY_PHONE
+    : FALLBACK_FAKE_HUBSOFT_SECONDARY_PHONE;
+
+  return {
+    cleanPhonePrimary,
+    cleanPhoneSecondary,
+    cleanPhoneTertiary: null as null,
+  };
+}
+
 export async function registerClientContract(clientId: string, input: RegisterContractInput) {
   const client = await prisma.client.findUniqueOrThrow({
     where: { id: clientId },
@@ -589,12 +622,8 @@ export async function registerClientContract(clientId: string, input: RegisterCo
 
   const cleanCpf = input.cpf.replace(/\D/g, "");
   const tipoPessoa = cleanCpf.length === 14 ? "pj" : "pf";
-  const cleanPhonePrimary = input.phonePrimary.replace(/\D/g, "");
-  const phoneSecondary = cleanString(input.phoneSecondary);
-  const rawSec = phoneSecondary ? phoneSecondary.replace(/\D/g, "") : null;
-  // O Hubsoft proíbe telefones duplicados (Telefone 1, 2 e 3 devem ser distintos ou nulos)
-  const cleanPhoneSecondary = rawSec && rawSec !== cleanPhonePrimary ? rawSec : null;
-  const cleanPhoneTertiary = null;
+  const { cleanPhonePrimary, cleanPhoneSecondary, cleanPhoneTertiary } =
+    resolveHubsoftPhones(input.phonePrimary);
 
   const fatherName = cleanString(input.fatherName);
   const complement = cleanString(input.complement);
@@ -687,7 +716,7 @@ export async function registerClientContract(clientId: string, input: RegisterCo
     fullName: input.fullName,
     cpf: cleanCpf,
     phonePrimary: cleanPhonePrimary,
-    phoneSecondary: phoneSecondary,
+    phoneSecondary: null,
     email: input.email,
     gender: genero,
     observation: observation,
@@ -743,7 +772,6 @@ export async function registerClientContract(clientId: string, input: RegisterCo
     fullName: input.fullName,
     cpf: cleanCpf,
     phonePrimary: cleanPhonePrimary,
-    phoneSecondary: phoneSecondary ?? undefined,
     email: input.email,
     gender: genero,
     observation: observation ?? undefined,
@@ -811,12 +839,8 @@ export async function registerClientContractPJ(
   const resolvedPackages = await resolveAndValidatePackages(input.packageIds, plan);
 
   const cleanCnpj = input.cnpj.replace(/\D/g, "");
-  const cleanPhonePrimary = input.phonePrimary.replace(/\D/g, "");
-  const phoneSecondary = cleanString(input.phoneSecondary);
-  const rawSec = phoneSecondary ? phoneSecondary.replace(/\D/g, "") : null;
-  // O Hubsoft proíbe telefones duplicados (Telefone 1, 2 e 3 devem ser distintos ou nulos)
-  const cleanPhoneSecondary = rawSec && rawSec !== cleanPhonePrimary ? rawSec : null;
-  const cleanPhoneTertiary = null;
+  const { cleanPhonePrimary, cleanPhoneSecondary, cleanPhoneTertiary } =
+    resolveHubsoftPhones(input.phonePrimary);
 
   const tradeName = cleanString(input.tradeName) || input.companyName;
   const stateRegistration = cleanString(input.stateRegistration) || "ISENTO";
@@ -901,7 +925,7 @@ export async function registerClientContractPJ(
     stateRegistration: stateRegistration,
     contactName: input.contactName,
     phonePrimary: cleanPhonePrimary,
-    phoneSecondary: phoneSecondary,
+    phoneSecondary: null,
     email: input.email,
     observation: observation,
     cep: input.cep.replace(/\D/g, ""),
@@ -952,7 +976,6 @@ export async function registerClientContractPJ(
     stateRegistration: stateRegistration ?? undefined,
     contactName: input.contactName,
     phonePrimary: cleanPhonePrimary,
-    phoneSecondary: phoneSecondary ?? undefined,
     email: input.email,
     observation: observation ?? undefined,
     planId: plan ? plan.id : undefined,
