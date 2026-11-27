@@ -724,7 +724,7 @@ export async function registerClientContract(clientId: string, input: RegisterCo
       ? settings.hubsoftGruposServicoIds
       : [835],
     id_forma_cobranca: plan?.paymentMethod?.hubsoftId ?? 94,
-    carne: true,
+    carne: settings.hubsoftCarne ?? true,
     tipo_cobranca: "postecipada",
     emite_contrato: false,
     gerar_carne: "nao_gerar_carne",
@@ -930,7 +930,7 @@ export async function registerClientContractPJ(
       ? settings.hubsoftGruposServicoIds
       : [835],
     id_forma_cobranca: plan?.paymentMethod?.hubsoftId ?? 94,
-    carne: true,
+    carne: settings.hubsoftCarne ?? true,
     tipo_cobranca: "postecipada",
     emite_contrato: false,
     gerar_carne: "nao_gerar_carne",

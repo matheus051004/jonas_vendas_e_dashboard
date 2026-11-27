@@ -59,6 +59,7 @@ const SettingsUpdateSchema = z.object({
   hubsoftGruposClienteIds: z.array(z.number().int()).optional(),
   hubsoftGruposServicoIds: z.array(z.number().int()).optional(),
   hubsoftServicoStatusId: z.number().int().positive().optional(),
+  hubsoftCarne: z.boolean().optional(),
 });
 
 export async function GET() {

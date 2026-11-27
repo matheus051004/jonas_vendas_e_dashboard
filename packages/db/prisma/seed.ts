@@ -126,6 +126,7 @@ async function main() {
       hubsoftGruposClienteIds: [4],
       hubsoftGruposServicoIds: [835],
       hubsoftServicoStatusId: 6,
+      hubsoftCarne: true,
     },
   });
 

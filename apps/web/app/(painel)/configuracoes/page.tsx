@@ -21,7 +21,9 @@ import {
   MenuItem,
   Select,
   FormControl,
+  FormControlLabel,
   InputLabel,
+  Switch,
 } from "@mui/material";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import PaletteIcon from "@mui/icons-material/Palette";
@@ -91,6 +93,7 @@ interface Settings {
   hubsoftGruposClienteIds: number[];
   hubsoftGruposServicoIds: number[];
   hubsoftServicoStatusId: number;
+  hubsoftCarne: boolean;
 }
 
 const BRANDING_FIELDS: (keyof Settings)[] = [
@@ -179,6 +182,7 @@ const HUBSOFT_FIELDS: (keyof Settings)[] = [
   "hubsoftGruposClienteIds",
   "hubsoftGruposServicoIds",
   "hubsoftServicoStatusId",
+  "hubsoftCarne",
 ];
 
 const MASKED_SECRET_SENTINEL = "••••••••";
@@ -475,6 +479,7 @@ export default function ConfiguracoesPage() {
           hubsoftGruposClienteIds: data.hubsoftGruposClienteIds?.length ? data.hubsoftGruposClienteIds : [4],
           hubsoftGruposServicoIds: data.hubsoftGruposServicoIds?.length ? data.hubsoftGruposServicoIds : [835],
           hubsoftServicoStatusId: data.hubsoftServicoStatusId ?? 6,
+          hubsoftCarne: data.hubsoftCarne ?? true,
         });
       });
   }, []);
@@ -1709,6 +1714,20 @@ export default function ConfiguracoesPage() {
                     setForm({ ...form, hubsoftGruposServicoIds: arr });
                   }}
                 />
+              </Grid>
+              <Grid size={{ xs: 12, sm: 6, md: 4 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={form.hubsoftCarne}
+                      onChange={(e) => setForm({ ...form, hubsoftCarne: e.target.checked })}
+                    />
+                  }
+                  label="Carnê (carne)"
+                />
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Envia carne: {form.hubsoftCarne ? "true" : "false"} no payload do Hubsoft (Padrão: ativado)
+                </Typography>
               </Grid>
             </Grid>
 

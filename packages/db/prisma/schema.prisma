@@ -303,6 +303,7 @@ model Settings {
   hubsoftGruposClienteIds    Int[]     @default([4])
   hubsoftGruposServicoIds    Int[]     @default([835])
   hubsoftServicoStatusId     Int       @default(6)
+  hubsoftCarne               Boolean   @default(true)
 
   // Prompts e Prospecção (ElevenLabs Agents + Fallback de Texto)
   voiceAiPrompt              String  @default("")

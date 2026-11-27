@@ -134,6 +134,7 @@ export const SettingsHubsoftSchema = z.object({
   hubsoftGruposClienteIds: z.array(z.coerce.number().int()).default([4]),
   hubsoftGruposServicoIds: z.array(z.coerce.number().int()).default([835]),
   hubsoftServicoStatusId: z.coerce.number().int().positive("Informe um ID válido"),
+  hubsoftCarne: z.boolean().default(true),
 });
 
 const timeFormat = z
